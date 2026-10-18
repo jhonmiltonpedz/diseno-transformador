@@ -1,0 +1,33 @@
+name: Publicar demo
+
+# Copia docs/ de main a la rama gh-pages, que es la que sirve GitHub Pages.
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", ".github/workflows/publicar-demo.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  gh-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Copiar docs/ a gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp -r docs "$RUNNER_TEMP/sitio"
+          touch "$RUNNER_TEMP/sitio/.nojekyll"
+          git checkout -B gh-pages origin/gh-pages
+          git rm -rq .
+          cp -r "$RUNNER_TEMP/sitio/." .
+          git add -A
+          if git diff --cached --quiet; then echo "La demo ya está al día"; exit 0; fi
+          git commit -m "Demo publicada desde ${GITHUB_SHA::7}"
+          git push origin gh-pages
