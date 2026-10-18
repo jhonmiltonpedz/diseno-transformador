@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+
+# resultados intermedios de la verificación (los genera verificacion/comparar_mapa.py)
+verificacion/reglas.json
+verificacion/resultados_py.json
+verificacion/resultados_js.json
+verificacion/resultado_mapa.json

@@ -1,0 +1,516 @@
+<title>Diseño de transformador</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<style>
+  /* Editor de una pantalla: barra con acciones, pasos con su estado, franja de estado y dos columnas (datos a la
+     izquierda, resultados en pestañas a la derecha). Tema CLARO por defecto (se lee mejor, sobre todo en letra chica) y
+     oscuro a elección con el botón «Tema». Color solo para lo anormal (como ISA-101): rojo = no cumple, ámbar = falta un
+     dato o está cerca del límite; lo normal va en grises y siempre con ícono y texto, no solo con color. */
+  :root {
+    --bg: #eef1f4;
+    --panel: #ffffff;
+    --campo: #f5f7f9;          /* superficies dentro de un panel */
+    --entrada: #ffffff;        /* celdas que se digitan */
+    --linea: #d9dee3;
+    --linea-2: #b7c0c8;
+    --fg: #1b2127;
+    --fg-2: #3c4651;
+    --muted: #616c77;
+    --accent: #1d64a8;         /* solo lo que se puede tocar: botón principal, foco, pestaña elegida */
+    --accent-fg: #ffffff;
+    --ok: #1d7a46;
+    --aviso: #9a5b00;
+    --aviso-fondo: #fff4dc;
+    --error: #b42318;
+    --error-fondo: #fdecea;
+    --barra: #8a96a2;          /* barra de uso normal (gris) */
+    --nucleo: #9aa4ae;
+    --nucleo-borde: #6b7680;
+    --papel: #e8dcbc;
+    --papel-borde: #8a7a5a;
+    --cobre: #c87533;
+    --cobre-borde: #6b3410;
+    --tubo: #8c6b3c;
+    --serie-50: #c2410c;       /* curva de 50 Hz */
+    --serie-60: #1d4ed8;       /* curva de 60 Hz y frente de Pareto */
+    --punto: #a3acb5;          /* combinaciones que cumplen (contexto) */
+    --sombra: rgb(16 24 32 / 0.12);
+    --font-ui: "IBM Plex Sans Condensed", "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+    --font-mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+    color-scheme: light;
+  }
+  :root[data-tema="oscuro"] {
+    --bg: #14181c;
+    --panel: #1b2026;
+    --campo: #12171b;
+    --entrada: #0f1317;
+    --linea: #2c343c;
+    --linea-2: #3a444e;
+    --fg: #e6ebef;
+    --fg-2: #b8c1c9;
+    --muted: #8f9aa4;
+    --accent: #56bde9;
+    --accent-fg: #06202d;
+    --ok: #3fcf8e;
+    --aviso: #e7a83d;
+    --aviso-fondo: #2b2416;
+    --error: #f07070;
+    --error-fondo: #2e1b1b;
+    --barra: #6b7783;
+    --nucleo: #46505a;
+    --nucleo-borde: #8a959f;
+    --serie-50: #d95926;
+    --serie-60: #3987e5;
+    --punto: #66727d;
+    --sombra: rgb(0 0 0 / 0.35);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--fg); }
+  body { font-family: var(--font-ui); font-size: 15px; line-height: 1.4; padding-inline: 16px; padding-block: 0 24px; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* Barra superior */
+  .barra { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg);
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-block: 12px 12px; }
+  .barra h1 { margin: 0; font-size: 25px; font-weight: 700; line-height: 1.15; text-wrap: balance; }
+  .chip { font-family: var(--font-mono); font-size: 13.5px; color: var(--fg-2); }
+  .acciones { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
+  .boton { border: 1px solid var(--linea); background: var(--panel); border-radius: 5px; padding: 8px 16px;
+    font-size: 16px; font-weight: 500; cursor: pointer; }
+  .boton:hover { border-color: var(--muted); }
+  .boton.principal { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+  .boton.principal:hover { filter: brightness(1.08); }
+  .boton.peligro { border-color: var(--aviso); color: var(--aviso); }
+  .boton.chico { padding: 5px 12px; font-size: 14px; }
+
+  /* Franja de estado */
+  .estado { background: var(--panel); border-left: 3px solid var(--linea-2); border-radius: 0 4px 4px 0; padding: 10px 16px;
+    font-size: 16px; margin-bottom: 14px; }
+  .estado[data-tipo="aviso"] { border-left-color: var(--aviso); }
+  .estado[data-tipo="error"], .estado[data-tipo="procede"] { border-left-color: var(--error); }
+  .estado b { font-family: var(--font-mono); font-weight: 600; font-size: 14.5px; }
+
+  .cargar { background: var(--panel); border: 1px solid var(--linea); border-radius: 6px; padding: 14px 16px;
+    display: grid; gap: 10px; margin-bottom: 14px; }
+  .cargar textarea { width: 100%; min-height: 110px; background: var(--campo); border: 1px solid var(--linea);
+    border-radius: 4px; padding: 10px; font-family: var(--font-mono); font-size: 12px; resize: vertical; }
+  .fila-botones { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .nota { color: var(--muted); font-size: 14px; }
+  .nota.error { color: var(--error); }
+
+  /* Dos columnas desde 980 px: datos (pasos 1 a 4 y búsqueda) a la izquierda y resultados a la derecha, fijos al bajar.
+     Cada panel es un contenedor: sus grillas se acomodan a su propio ancho, no al de la ventana. */
+  .editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+  @media (min-width: 980px) {
+    .editor { grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); }
+    #panel-5 { position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--alto-barra, 66px));
+      max-height: calc(100vh - var(--alto-barra, 66px) - 14px); overflow-y: auto; overscroll-behavior: contain; }
+  }
+  @media (min-width: 1560px) { .editor { grid-template-columns: minmax(0, 820px) minmax(0, 1fr); } }
+  .columna { display: grid; gap: 14px; min-width: 0; }
+  .panel { background: var(--panel); border: 1px solid var(--linea); border-radius: 6px; padding: 14px 16px; min-width: 0; scroll-margin-top: 78px;
+    container-type: inline-size; }
+  .estado strong { font-weight: 700; }
+  .rotulo { font-size: 13px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+  .rotulo b { font-family: var(--font-mono); font-weight: 700; color: var(--fg); letter-spacing: 0.02em; text-transform: none; }
+  .desliza { overflow-x: auto; }
+  .paso { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 8px; border-radius: 50%;
+    background: var(--fg-2); color: var(--panel); font-family: var(--font-mono); font-weight: 700; font-size: 12px; letter-spacing: 0; }
+  .sub-rotulo { margin-top: 16px; }
+  .rotulo b[data-ok="si"], table.ingreso td.calc.res[data-ok="si"], .pares output.res[data-ok="si"] { color: var(--fg); }
+  .rotulo b[data-ok="no"], table.ingreso td.calc.res[data-ok="no"], .pares output.res[data-ok="no"] { color: var(--error); }
+  table.ingreso td.calc.res[data-ok="no"]::before, .pares output.res[data-ok="no"]::before { content: "✗ "; }
+  .mal { color: var(--error); }
+  .si { color: var(--fg-2); font-weight: 600; }
+  .no { color: var(--error); font-weight: 600; }
+  .rotulo .azul { color: var(--fg-2); text-transform: none; letter-spacing: 0.02em; }
+
+  /* Tabla de devanados */
+  table.ingreso { border-collapse: separate; border-spacing: 3px; min-width: 690px; width: 100%; table-layout: fixed; }
+  table.ingreso.dos-dev { min-width: 480px; }
+  table.ingreso col.r { width: 146px; }
+  table.ingreso th { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    background: var(--campo); border: 1px solid var(--linea); border-radius: 4px; padding: 6px 4px; }
+  table.ingreso th.off { color: var(--muted); }
+  table.ingreso th small { font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: none; color: var(--muted); }
+  table.ingreso td { padding: 0; height: 30px; }
+  table.ingreso td.r { color: var(--fg-2); font-size: 14px; padding-right: 6px; line-height: 1.15; }
+  table.ingreso td.r small, .pares small, .pares .lbl small { display: block; font-size: 11.5px; color: var(--muted); line-height: 1.2; }
+  table.ingreso td.res { font-weight: 600; font-size: 14px; border-bottom-style: solid; }
+  table.ingreso.distancias { min-width: 400px; }
+  table.ingreso td small.bobinas { display: block; font-size: 12.5px; font-weight: 500; color: var(--fg-2); line-height: 1.2; padding-bottom: 3px; }
+  table.ingreso.cliente { min-width: 480px; }
+  @container (max-width: 560px) {          /* columna de datos angosta: rótulos y mínimos un poco más chicos */
+    table.ingreso col.r { width: 124px; }
+    table.ingreso.dos-dev, table.ingreso.cliente.dos-dev { min-width: 420px; }
+    .pares { grid-template-columns: minmax(0, 1fr) 112px; }
+  }
+  #grupos-cliente { margin-top: 16px; }
+  #grupos-devanados { margin-bottom: 12px; }
+  table.ingreso.distancias th.off { color: var(--muted); }
+  table.ingreso td.sub { text-align: center; font-size: 11.5px; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; height: 22px; }
+  table.ingreso td.calc { text-align: center; font-family: var(--font-mono); font-size: 13px; color: var(--fg-2);
+    border-bottom: 1px dashed var(--linea-2); }
+  table.ingreso td.calc.dens { color: var(--fg-2); }
+  table.ingreso td.calc.ais { font-family: var(--font-ui); font-style: italic; letter-spacing: 0.05em; }
+  table.ingreso tr.sep td { height: 8px; }
+  .campo { width: 100%; height: 30px; background: var(--entrada); border: 1px solid var(--linea); border-radius: 4px;
+    font-family: var(--font-mono); font-size: 13px; text-align: center; text-align-last: center; padding: 0 4px; min-width: 0; }
+  .campo:hover:not(:disabled) { border-color: var(--muted); }
+  .campo:disabled { color: var(--muted); background: transparent; border-style: dashed; }
+  .campo.falta { border-color: var(--aviso); box-shadow: inset 0 0 0 1px var(--aviso); background: var(--aviso-fondo); }
+  .nota-fija { margin: 0 0 10px; padding: 6px 10px; border-left: 3px solid var(--aviso); background: var(--campo);
+    color: var(--fg-2); font-size: 13.5px; line-height: 1.45; border-radius: 0 4px 4px 0; }
+  .nota-fija b { color: var(--aviso); }
+  .rotulo .fuente { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 4px; }
+  .rotulo .fuente::before { content: "· fuente: "; }
+  .campo::placeholder { color: var(--muted); opacity: 0.8; font-style: italic; }
+  select.campo { cursor: pointer; }
+  select.campo option { background: var(--entrada); color: var(--fg); }
+  .leyenda { color: var(--muted); font-size: 13.5px; margin: 12px 0 0; max-width: 92ch; }
+
+  /* Generales, núcleo y anchos */
+  .grupos { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px 20px; }
+  .pares { display: grid; grid-template-columns: minmax(0, 1fr) 124px; gap: 4px 10px; align-items: center; }
+  .pares label { color: var(--fg-2); font-size: 14px; }
+  .pares .lbl { color: var(--fg-2); font-size: 14px; }
+  .pares output.res { font-family: var(--font-mono); font-size: 14px; font-weight: 600; text-align: center; color: var(--fg-2);
+    border-bottom: 1px dashed var(--linea-2); padding: 4px 0; }
+  .pares.fases { max-width: 420px; margin-top: 12px; }
+  .grupos.reparto { margin-top: 14px; grid-template-columns: minmax(0, 420px); }
+  @container (min-width: 600px) { .grupos.tres-col { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .anchos { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 8px 6px; }
+  @container (max-width: 520px) { .anchos { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+  .escalon { display: grid; gap: 3px; text-align: center; min-width: 0; }
+  .escalon label { color: var(--muted); font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; }
+  .optimo { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); min-height: 16px; }
+
+  /* Resultados */
+  .pestanas { display: flex; flex-wrap: wrap; gap: 2px 22px; border-bottom: 1px solid var(--linea); margin: -4px 0 16px; }
+  .pestanas button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 0 9px; font-size: 16px;
+    font-weight: 600; color: var(--muted); cursor: pointer; margin-bottom: -1px; }
+  .pestanas button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--fg); }
+  .pestanas button:hover { color: var(--fg); }
+  .vista { display: grid; gap: 20px; min-width: 0; }
+  .vista section { min-width: 0; }
+  .vista h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .encabezado { margin: 0; color: var(--fg-2); font-size: 15px; max-width: 95ch; }
+  .encabezado b { color: var(--fg); }
+  .cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 6px; }
+  .cifra { background: var(--campo); border: 1px solid var(--linea); border-radius: 6px; padding: 9px 12px; display: grid; gap: 2px; align-content: start; }
+  .cifra span { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .cifra b { font-family: var(--font-mono); font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cifra.destaca b { color: var(--fg); }
+  .cifra.mal b { color: var(--error); }
+  section.alerta { border: 1px solid var(--error); border-left-width: 3px; border-radius: 6px; padding: 12px 14px; background: var(--error-fondo); }
+  section.alerta h3 { color: var(--error); }
+  .cifras.grandes { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .cifras.grandes .cifra b { font-size: 24px; }
+  .par .cifras { margin-bottom: 10px; }
+  .verif { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 14.5px; }
+  .verif li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px; color: var(--fg-2); }
+  .verif li::before { content: "✓"; color: var(--fg-2); font-weight: 700; }
+  .verif li.no { color: var(--fg); }
+  .verif li.no::before { content: "✗"; color: var(--error); }
+  .verif li.procede { color: var(--error); }
+  .verif li.procede::before { content: "!"; color: var(--error); text-align: center; }
+  .errores { margin: 0; padding-left: 18px; display: grid; gap: 5px; }
+  .errores li::marker { color: var(--error); }
+  .dos { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 20px; align-items: start; }
+  .tres { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; align-items: start; }
+  .tabla { overflow-x: auto; border: 1px solid var(--linea); border-radius: 6px; }
+  .tabla table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .tabla th { background: var(--campo); color: var(--muted); font-weight: 600; font-size: 12px; letter-spacing: 0.05em;
+    text-transform: uppercase; text-align: center; padding: 7px 8px; border-bottom: 1px solid var(--linea); white-space: nowrap; }
+  .tabla td { padding: 6px 8px; border-bottom: 1px solid var(--linea); text-align: center; white-space: nowrap; }
+  .tabla td:not(:first-child) { font-family: var(--font-mono); font-size: 12.5px; }
+  .tabla td:first-child, .tabla th:first-child { text-align: left; }
+  .tabla tbody tr:last-child td { border-bottom: 0; }
+  .tabla tr.total td { background: var(--campo); font-weight: 700; }
+  .tabla .opt { color: var(--muted); }
+  table.corte th { border-left: 1px solid var(--linea); }
+  table.corte th:first-child { border-left: 0; }
+  table.corte tr.total td:first-child { text-align: right; font-family: var(--font-ui); font-size: 14px; }
+  table.pasos td.f { font-size: 12px; color: var(--fg-2); text-align: left; white-space: normal; min-width: 280px; line-height: 1.5; }
+  table.pasos td:last-child { text-align: right; }
+  table.pasos tr.fuerte td { background: var(--campo); }
+  table.pasos tr.fuerte td:first-child { font-weight: 600; }
+  .nota-tabla { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+  dl.lista { margin: 0; display: grid; grid-template-columns: minmax(8.5em, 1fr) minmax(0, max-content); gap: 6px 14px; font-size: 14px;
+    border-top: 1px solid var(--linea); padding-top: 8px; }
+  dl.lista dt { color: var(--fg-2); }
+  dl.lista dd { margin: 0; font-family: var(--font-mono); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  dl.lista dd.fuerte { color: var(--fg); font-weight: 700; }
+  .dibujo { background: var(--campo); border: 1px solid var(--linea); border-radius: 6px; padding: 10px; overflow-x: auto; text-align: center; }
+  .dibujo svg { max-width: 100%; height: auto; }
+  .dibujo .t { fill: var(--fg-2); font-family: var(--font-ui); font-size: 11px; }
+  .dibujo .t.rojo { fill: var(--error); }
+  .dibujo .rot { fill: var(--fg); stroke: var(--campo); stroke-width: 3px; paint-order: stroke; font-family: var(--font-ui); font-size: 11px; font-weight: 600; }
+  .dibujo .nuc { fill: var(--nucleo); stroke: var(--nucleo-borde); stroke-width: 0.8; }
+  .dibujo .eje { stroke: var(--fg-2); stroke-width: 0.8; stroke-dasharray: 8 3 2 3; }
+  .dibujo .limite { stroke: var(--error); stroke-width: 0.8; stroke-dasharray: 4 3; }
+  .dibujo .dev { stroke: var(--campo); stroke-width: 0.8; }
+  .dibujo .dev.mal { stroke: var(--error); stroke-width: 1.8; }
+  .dibujo .tubo { fill: var(--tubo); }
+  .dibujo .papel { fill: var(--papel); stroke: var(--papel-borde); stroke-width: 0.6; }
+  .dibujo .cobre { fill: var(--cobre); }
+  .dibujo .alambre { fill: var(--cobre); stroke: var(--cobre-borde); stroke-width: 1; }
+  .dibujo .cota { stroke: var(--fg-2); stroke-width: 0.8; }
+  .dibujo .util { stroke: var(--aviso); stroke-width: 1; stroke-dasharray: 3 2; }
+  .dibujo .limite2 { stroke: var(--aviso); stroke-width: 1; stroke-dasharray: 3 2; }
+  .pie-dibujo { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+  .tabla small.sub-par { display: block; color: var(--muted); font-size: 12px; }
+  .contornos { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 10px; }
+  .contorno-fig { margin: 0; display: grid; gap: 4px; }
+  .contorno-fig figcaption { font-size: 13px; font-weight: 600; color: var(--fg-2); }
+  .dibujo .relleno { fill: var(--serie-60); fill-opacity: 0.55; stroke: var(--serie-60); stroke-width: 0.8; }
+  .dibujo .hawayano { fill: none; stroke: var(--serie-60); stroke-width: 3; }
+  .dibujo .contorno { fill: none; stroke: var(--fg); stroke-width: 1.6; stroke-dasharray: 4 2; }
+  .dibujo .rot-c { fill: var(--fg); font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
+  /* gráfico de pérdidas */
+  .graf-caja { position: relative; background: var(--campo); border: 1px solid var(--linea); border-radius: 6px; padding: 10px 12px 6px; }
+  .graf-desliza { overflow-x: auto; }
+  .graf { display: block; width: 100%; min-width: 520px; height: auto; touch-action: pan-x pan-y; }
+  @container (max-width: 600px) { .graf { min-width: 440px; } }
+  .graf:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .graf .rej { stroke: var(--linea); stroke-width: 1; }
+  .graf .eje { fill: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+  .graf .eje.titulo { font-family: var(--font-ui); font-size: 12px; fill: var(--fg-2); }
+  .graf .curva { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .graf .curva.extra { stroke-dasharray: 4 4; stroke-width: 1.5; }
+  .graf .s50 { stroke: var(--serie-50); }
+  .graf .s60 { stroke: var(--serie-60); }
+  .graf .punto { stroke: var(--campo); stroke-width: 2; }
+  .graf .punto.s50 { fill: var(--serie-50); }
+  .graf .punto.s60 { fill: var(--serie-60); }
+  .graf .calc { fill: none; stroke: var(--fg); stroke-width: 2; }
+  .graf .guia { stroke: var(--fg-2); stroke-width: 1; }
+  .graf .valor { fill: var(--fg); font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+  .graf .cruz { stroke: var(--fg-2); stroke-width: 1; }
+  .graf .toque { fill: transparent; cursor: crosshair; }
+  .leyenda-graf { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--fg-2); margin-bottom: 4px; align-items: center; }
+  .leyenda-graf span { display: inline-flex; align-items: center; gap: 6px; }
+  .leyenda-graf .nota-k { color: var(--muted); }
+  i.k { display: inline-block; width: 16px; height: 2px; border-radius: 1px; }
+  i.k.s50 { background: var(--serie-50); }
+  i.k.s60 { background: var(--serie-60); }
+  i.pt { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: linear-gradient(90deg, var(--serie-50) 50%, var(--serie-60) 50%); }
+  i.pc { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--fg); }
+  .tip { position: absolute; z-index: 3; background: var(--panel); border: 1px solid var(--linea-2); border-radius: 5px; padding: 7px 10px;
+    font-size: 12.5px; pointer-events: none; min-width: 170px; box-shadow: 0 4px 14px var(--sombra); }
+  .tit-tip { color: var(--muted); font-family: var(--font-mono); margin-bottom: 3px; }
+  .fila-tip { display: grid; grid-template-columns: 16px auto 1fr; gap: 6px; align-items: center; }
+  .fila-tip b { font-family: var(--font-mono); font-weight: 600; color: var(--fg); }
+  .fila-tip span { color: var(--fg-2); }
+  .fila-tip:not(:has(i))::before { content: ""; }
+  /* panel y resultados de la búsqueda */
+  .tipos-busq { display: grid; gap: 12px; margin-top: 14px; }
+  .tipos-busq .rotulo { margin-bottom: 6px; }
+  .tipos-busq .nota-k { text-transform: none; letter-spacing: 0.02em; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip-tipo { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--linea); border-radius: 14px; padding: 4px 10px;
+    font-size: 13.5px; color: var(--fg-2); background: var(--campo); cursor: pointer; }
+  .chip-tipo input { accent-color: var(--accent); margin: 0; }
+  .chip-tipo:has(input:checked) { border-color: var(--accent); color: var(--fg); }
+  .fila-busq { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .lbl-orden { color: var(--fg-2); font-size: 14px; }
+  #b-orden { width: auto; min-width: 230px; text-align: left; text-align-last: left; font-family: var(--font-ui); font-size: 14px; }
+  .graf .pt-todo { fill: var(--punto); stroke: var(--campo); stroke-width: 1.5; }
+  .graf .pt-par { fill: var(--serie-60); stroke: var(--campo); stroke-width: 2; }
+  .graf .linea-par { fill: none; stroke: var(--serie-60); stroke-width: 2; stroke-linejoin: round; }
+  .graf .pt-mejor { fill: none; stroke: var(--fg); stroke-width: 2; }
+  .graf .pt-act { fill: var(--aviso); stroke: var(--campo); stroke-width: 2; }
+  .graf .foco { fill: none; stroke: var(--fg); stroke-width: 1.5; }
+  i.pt-k { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+  i.pt-k.todo { background: var(--punto); }
+  i.pt-k.par { background: var(--serie-60); }
+  i.pa { display: inline-block; width: 8px; height: 8px; background: var(--aviso); transform: rotate(45deg); }
+  .fila-tip.sin-k { grid-template-columns: auto 1fr; }
+  .fila-tip.sin-k::before { display: none; }
+  table.busq td.dev { white-space: normal; min-width: 230px; font-family: var(--font-ui); font-size: 13px; text-align: left; line-height: 1.35; }
+  table.busq td:last-child { padding: 4px 8px; }
+  .boton.usar:disabled { opacity: 0.45; cursor: not-allowed; }
+  ul.avisos { margin: 0; padding-left: 18px; color: var(--aviso); font-size: 14px; display: grid; gap: 3px; }
+  .nota-tabla .m { font-family: var(--font-mono); font-size: 12px; color: var(--fg-2); }
+  .pie-dibujo b { color: var(--fg); font-family: var(--font-mono); font-weight: 600; }
+  .vacio { color: var(--muted); margin: 0; }
+
+  /* Pasos con su estado */
+  .pasos-nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+  @media (max-width: 900px) { .pasos-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .pasos-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .paso-nav { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; align-items: center; text-align: left;
+    background: var(--panel); border: 1px solid var(--linea); border-left: 4px solid var(--linea-2); border-radius: 6px;
+    padding: 8px 12px; cursor: pointer; min-width: 0; }
+  .paso-nav:hover { border-color: var(--linea-2); }
+  .paso-nav .num { grid-row: span 2; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--campo); border: 1px solid var(--linea-2); font-family: var(--font-mono); font-weight: 700; font-size: 13px; }
+  .paso-nav .nom { font-weight: 600; font-size: 15px; }
+  .paso-nav .est { font-size: 13.5px; color: var(--fg-2); overflow-wrap: anywhere; }
+  .paso-nav[data-est="falta"] { border-left-color: var(--aviso); }
+  .paso-nav[data-est="falta"] .est { color: var(--aviso); font-weight: 600; }
+  .paso-nav[data-est="no"] { border-left-color: var(--error); }
+  .paso-nav[data-est="no"] .est { color: var(--error); font-weight: 600; }
+  .paso-nav[data-est="procede"] { border-left-color: var(--error); }
+  .paso-nav[data-est="procede"] .est { color: var(--error); font-weight: 600; }
+  .paso-nav[data-est="cerca"] { border-left-color: var(--aviso); }
+  .paso-nav[data-est="cerca"] .est { color: var(--aviso); font-weight: 600; }
+  .paso-nav[data-est="pend"] .est { color: var(--muted); }
+  .paso-nav[data-est="ok"] .num { background: var(--fg-2); color: var(--panel); border-color: var(--fg-2); }
+
+  /* Datos que faltan, con enlace a cada celda */
+  .faltan { display: grid; gap: 6px; margin-top: 8px; }
+  .faltan .grupo-f { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .faltan .grupo-f > span { font-size: 13.5px; color: var(--fg-2); font-weight: 600; margin-right: 2px; }
+  .chip-falta { border: 1px solid var(--aviso); background: var(--aviso-fondo); color: var(--fg); border-radius: 14px;
+    padding: 3px 10px; font-size: 13.5px; cursor: pointer; }
+  .chip-falta:hover { filter: brightness(0.97); text-decoration: underline; }
+  .estado .ico { font-weight: 700; margin-right: 4px; }
+  .estado[data-tipo="ok"] .ico { color: var(--fg-2); }
+  .estado[data-tipo="aviso"] .ico { color: var(--aviso); }
+  .estado[data-tipo="error"] .ico, .estado[data-tipo="procede"] .ico { color: var(--error); }
+  .campo.resalta { outline: 3px solid var(--accent); outline-offset: 1px; }
+
+  /* Semáforo de límites con % de uso */
+  .limites { display: grid; gap: 6px; }
+  .lim { display: grid; grid-template-columns: 22px minmax(0, 1.5fr) minmax(90px, 1.2fr) auto minmax(0, 1.4fr); gap: 4px 10px;
+    align-items: center; width: 100%; text-align: left; background: var(--campo); border: 1px solid var(--linea); border-radius: 6px;
+    padding: 7px 10px; cursor: pointer; font-size: 14px; }
+  .lim:hover { border-color: var(--linea-2); }
+  .lim .ic { font-weight: 700; text-align: center; }
+  .lim[data-est="ok"] .ic { color: var(--fg-2); }
+  .lim[data-est="cerca"] .ic { color: var(--aviso); }
+  .lim[data-est="no"], .lim[data-est="procede"] { border-color: var(--error); background: var(--error-fondo); }
+  .lim[data-est="no"] .ic, .lim[data-est="no"] .pct, .lim[data-est="procede"] .ic, .lim[data-est="procede"] .pct { color: var(--error); }
+  .lim[data-est="cerca"] .pct { color: var(--aviso); }
+  .lim .nom { font-weight: 600; }
+  .lim .nom small { display: block; font-weight: 400; color: var(--muted); font-size: 12.5px; }
+  .lim .barra { position: relative; height: 10px; background: var(--panel); border: 1px solid var(--linea-2); border-radius: 5px; overflow: hidden; }
+  .lim .barra i { position: absolute; inset: 0 auto 0 0; background: var(--barra); }
+  .lim[data-est="cerca"] .barra i { background: var(--aviso); }
+  .lim[data-est="no"] .barra i, .lim[data-est="procede"] .barra i { background: var(--error); }
+  .lim .barra b { position: absolute; top: -2px; bottom: -2px; left: calc(100% / 1.2); width: 2px; background: var(--fg); }
+  .lim .pct { font-family: var(--font-mono); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 52px; }
+  .lim .val { font-family: var(--font-mono); font-size: 13px; color: var(--fg-2); font-variant-numeric: tabular-nums; }
+  .lim .formula { grid-column: 1 / -1; font-family: var(--font-mono); font-size: 12.5px; color: var(--fg-2); border-top: 1px dashed var(--linea-2);
+    padding-top: 6px; white-space: normal; }
+  @container (max-width: 600px) {
+    .lim { grid-template-columns: 22px minmax(0, 1fr) auto; }
+    .lim .ic { grid-area: 1 / 1; } .lim .nom { grid-area: 1 / 2; } .lim .pct { grid-area: 1 / 3; }
+    .lim .barra { grid-area: 2 / 2 / 3 / 4; } .lim .val { grid-area: 3 / 2 / 4 / 4; } .lim .formula { grid-area: 4 / 1 / 5 / 4; }
+  }
+  .nota-lim { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
+
+  /* Resultados que muestran su fórmula al tocarlos */
+  button.cifra { text-align: left; cursor: pointer; font: inherit; color: inherit; }
+  button.cifra:hover { background: var(--panel); border-color: var(--linea-2); }
+  button.cifra[aria-expanded="true"] { background: var(--panel); border-color: var(--fg-2); box-shadow: inset 0 -3px 0 var(--fg-2); }
+  .cifra .toca { font-size: 11px; color: var(--muted); letter-spacing: 0; text-transform: none; }
+  .explica { border: 1px solid var(--linea-2); border-radius: 6px; padding: 10px 12px; background: var(--panel); display: grid; gap: 8px; }
+  .explica h4 { margin: 0; font-size: 14px; }
+  .explica .fuente-exp { color: var(--muted); font-size: 13px; margin: 0; }
+
+  /* Opciones avanzadas plegables */
+  details.avanzadas { margin-top: 14px; border: 1px dashed var(--linea-2); border-radius: 6px; padding: 8px 12px; }
+  details.avanzadas > summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--fg-2); }
+  details.avanzadas > summary small { font-weight: 400; color: var(--muted); }
+  details.avanzadas[open] > summary { margin-bottom: 10px; }
+  details.avanzadas.tabla-av { margin: 0 0 10px; }
+  details.detalle-verif > summary { cursor: pointer; color: var(--fg-2); font-size: 14px; }
+  details.detalle-verif[open] > summary { margin-bottom: 8px; }
+
+  .pie { margin-top: 18px; color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .pie b { color: var(--fg-2); font-weight: 600; }
+  .aviso-copia { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 5px; font-weight: 600; z-index: 10;
+    width: max-content; max-width: calc(100vw - 32px); }
+  @media (min-width: 980px) and (max-width: 1240px) { .barra h1 { font-size: 22px; } .boton { padding: 6px 11px; font-size: 14.5px; } .acciones { gap: 6px; } }
+  @media (max-width: 560px) { .barra h1 { font-size: 22px; } .acciones { margin-left: 0; } .barra { position: static; } }
+  @media (prefers-reduced-motion: no-preference) { .pestanas button, .boton, .campo { transition: color .12s, border-color .12s, filter .12s; } }
+</style>
+
+<header class="barra">
+  <h1>Diseño de transformador</h1>
+  <span class="chip" id="chip-codigo">TR-1000-22.9</span>
+  <div class="acciones">
+    <button class="boton" id="b-tema" type="button" title="Cambiar entre tema claro y oscuro">Tema: claro</button>
+    <button class="boton" id="b-ejemplo" type="button">Datos de origen</button>
+    <button class="boton" id="b-cargar" type="button">Cargar datos</button>
+    <button class="boton principal" id="b-copiar" type="button">Copiar datos</button>
+  </div>
+</header>
+
+<nav class="pasos-nav" id="pasos-nav" aria-label="Pasos del diseño"></nav>
+<div class="estado" id="estado" role="status">Calculando…</div>
+
+<section class="cargar" id="panel-cargar" hidden>
+  <label for="texto-cargar" class="rotulo" style="margin:0">Datos de un diseño</label>
+  <textarea id="texto-cargar" spellcheck="false"></textarea>
+  <div class="fila-botones">
+    <button class="boton principal chico" id="b-cargar-ok" type="button">Cargar</button>
+    <button class="boton chico" id="b-cargar-no" type="button">Cancelar</button>
+    <span class="nota" id="nota-cargar"></span>
+  </div>
+</section>
+
+<main class="editor">
+  <div class="columna">
+    <section class="panel" id="panel-1" data-paso="1">
+      <p class="rotulo"><span class="paso">1</span>Datos del cliente · lo que pide el transformador · <b id="r-cliente">—</b></p>
+      <div class="desliza"><table class="ingreso cliente" id="tabla-cliente"></table></div>
+      <div class="grupos" id="grupos-cliente"></div>
+      <p class="leyenda"><b>Origen de los datos</b>: potencia, tensiones, grupos, BIL, N° de pasos, % de variación y tap nominal salen de la hoja de datos de entrada; frecuencia y reparto de carga, de las especificaciones del cliente; la prueba industrial, de la hoja de esfuerzos. El <b>Vcc objetivo</b> y su tolerancia no tienen fuente: se digitan y el semáforo los verifica (vacíos = no se verifican). Cada devanado tiene dos columnas: primera y segunda tensión. Segunda tensión en 0: una sola tensión; segunda potencia en 0: la misma potencia; devanado sin potencia: no se usa. La regulación va en el Devanado I. Las corrientes se calculan solas.</p>
+    </section>
+    <section class="panel" id="panel-2" data-paso="2">
+      <p class="rotulo"><span class="paso">2</span>Núcleo · fija el espacio · <b id="r-seccion">—</b></p>
+      <div class="grupos tres-col" id="grupos-nucleo"></div>
+      <p class="rotulo sub-rotulo">Anchos de escalón · <b>mm, 0 = no se usa</b> · <span class="azul">debajo, el ancho óptimo de tabla</span> <span class="fuente">hoja de núcleo</span></p>
+      <div class="anchos" id="anchos"></div>
+    </section>
+    <section class="panel" id="panel-3" data-paso="3">
+      <p class="rotulo"><span class="paso">3</span>Devanados · se construyen dentro de la ventana · <b id="r-activos">—</b></p>
+      <p class="nota-fija"><b>Nota:</b> El Devanado I es siempre el externo; hacia el núcleo siguen el II y luego el III (el más interno va junto al núcleo). La posición radial no se digita: sale de este orden.</p>
+      <div class="grupos" id="grupos-devanados"></div>
+      <details class="avanzadas tabla-av" id="av-devanados"><summary>Opciones avanzadas <small>· ajuste de capas a mano y Devanado III</small></summary>
+        <p class="leyenda" style="margin:0">Abierto, la tabla muestra la fila «Ajuste de capas» (capas o espiras por capa a mano en vez de «Ajustar a la ventana») y las columnas del Devanado III (tercer devanado, junto al núcleo). Si alguno se usa, queda a la vista.</p>
+      </details>
+      <div class="desliza"><table class="ingreso" id="tabla-ingreso"></table></div>
+      <p class="leyenda"><b>Origen de los datos</b>: calibre, cantidad y horizontales salen de la hoja de datos de entrada; los conductores y las reglas de cada tipo, de la hoja de devanado. Tipo de devanado, papeles, canales internos y transposiciones salen del diseño de referencia; si se borran, <b>se digitan</b> (celdas en ámbar) y hasta entonces no se calcula. La <b>J máxima</b> es de tus condiciones.</p>
+      <p class="leyenda">Posición radial fija: el Devanado I es siempre el externo. <b>Ajustar a la ventana</b>: las espiras por capa salen de la altura que deja el núcleo (Hc − 2 x al yugo mínimo) y de ahí el N° de capas; con «N° de capas» o «Espiras por capa» se dan a mano y se verifica que entren. <b>Aislamiento menor</b> (dentro del devanado): papel de la platina, papel entre capas y canales internos de refrigeración, que van <b>dentro de la espira, entre conductores</b> (en un devanado de varias capas, también entre capas): el <b>N° de canales</b> y la <b>medida</b> de cada uno en mm (0 canales = sin canales); caben radiales x capas − 1. <b>Transposiciones</b>: cuántas veces se cruzan los conductores en paralelo para que todos ocupen todas las posiciones; la transposición completa es cantidad − 1 (12 platinas → 11, como el diseño de referencia) y cada una suma el ancho de un conductor a la altura del devanado. Las celdas punteadas se llenan solas. <b>FRANCÉS</b>: siempre 2 capas (2 o 3 verticales), con la mitad de las espiras en cada una. <b>HÉLICE</b> simple o doble: una sola capa, con todas sus espiras. Si no caben en la altura, el al yugo muestra cuánto falta.</p>
+    </section>
+    <section class="panel" id="panel-4" data-paso="4">
+      <p class="rotulo"><span class="paso">4</span>Distancias eléctricas · aislamiento mayor · <b id="r-entra">—</b></p>
+      <div class="desliza"><table class="ingreso distancias" id="tabla-distancias"></table></div>
+      <div class="pares fases" id="pares-fases"></div>
+      <p class="rotulo sub-rotulo">Esfuerzos dieléctricos <span class="fuente">hoja de esfuerzos</span></p>
+      <div class="pares fases" id="pares-esfuerzos" style="margin-top:0"></div>
+      <p class="leyenda" id="nota-holgura"></p>
+      <p class="leyenda"><b>Esfuerzos dieléctricos</b>: E = tensión de prueba industrial / distancia. Núcleo – bobina más interna: canal interior + tubo, &lt; 1.8 kV/mm (de 1.8 a 2 en rojo pero procede). Bobina – bobina, por contorneo sobre la barrera (HAWAYANO: d1 + hawayano + d2 + d3 + d4; TUBO: d1 + tubo + d5), &lt; 0.8 kV/mm.</p>
+      <p class="leyenda">Canal interior, al yugo mínimo y tubo enrollado salen del diseño de referencia; el entre fases mínimo (9 mm) es el resultante del diseño de referencia, tomado como mínimo: <b>supuesto, hay que validarlo</b> (falta una tabla de distancias por BIL).</p>
+      <p class="leyenda"><b>Aislamiento mayor</b> (entre partes distintas): canal interior hacia el núcleo o hacia el devanado anterior, distancia al yugo, tubo enrollado y distancia entre fases. Los mínimos se ingresan; lo resultante sale del núcleo y de los devanados ya construidos (en rojo y con ✗ lo que no cumple).</p>
+    </section>
+    <section class="panel" id="panel-busqueda">
+      <p class="rotulo">Búsqueda por Vcc · opcional · conductores y diámetro del núcleo</p>
+      <div class="grupos" id="grupos-busqueda"></div>
+      <div class="tipos-busq" id="tipos-busqueda"></div>
+      <p class="leyenda"><b>Va aparte del diseño</b>: sus condiciones, el Dn y el De son propios y no cambian el diseño ni su semáforo; solo «Usar» pasa la alternativa elegida al diseño. Del diseño usa el resto de la pantalla tal como está: tensiones, grupos, Hc, papeles, canales y distancias. Para cada Dn prueba las espiras enteras que dejan B en el rango y, en cada devanado, todos los conductores y arreglos del tipo marcado que dejan la densidad en el rango y entran en la ventana. Se queda con las combinaciones cuyo Vcc cae en la tolerancia y verifica cada una con el cálculo completo.</p>
+    </section>
+  </div>
+
+  <section class="panel columna" aria-label="Resultados" id="panel-5" data-paso="5">
+    <p class="rotulo" style="margin:0"><span class="paso">5</span>Resultados · límites, hojas y cálculos</p>
+    <nav class="pestanas" role="tablist" id="pestanas"></nav>
+    <div id="resultado" class="vista"></div>
+  </section>
+</main>
+
+<footer class="pie"><span>Elab. por J. Peralta · <span id="fecha"></span></span><span>Los datos se guardan solos en este navegador.</span><span>Toca un resultado o un límite para ver su fórmula.</span></footer>
+
+<script>
+/*CALC*/
+</script>
+<script>
+/*UI*/
+</script>
