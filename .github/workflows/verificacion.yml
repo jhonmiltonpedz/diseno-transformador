@@ -25,6 +25,9 @@ jobs:
       - name: Las 128 condiciones dan lo mismo en Python y en la web
         run: python verificacion/comparar_mapa.py
 
+      - name: El modelo 3D es sólido y coincide con el cálculo
+        run: node verificacion/prueba_3d.js
+
       - name: La página publicada está armada con las fuentes actuales
         run: |
           python web/armar.py

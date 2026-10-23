@@ -1,3 +1,4 @@
 # Programa en Jupyter (python/DISENO_DE_TRANSFORMADOR.py) y verificación (verificacion/comparar_mapa.py).
-# La verificación también necesita Node.js 18 o superior. La página web no necesita nada.
+# La verificación también necesita Node.js 18 o superior. La página web no necesita nada (la vista 3D trae three.js
+# de un CDN al abrir esa pestaña).
 ipywidgets>=8

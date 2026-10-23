@@ -1,6 +1,8 @@
 <title>Diseño de transformador</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<!-- three.js solo para la pestaña «Modelo 3D»: se descarga recién al abrirla (import dinámico) -->
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 <style>
   /* Editor de una pantalla: barra con acciones, pasos con su estado, franja de estado y dos columnas (datos a la
      izquierda, resultados en pestañas a la derecha). Tema CLARO por defecto (se lee mejor, sobre todo en letra chica) y
@@ -426,6 +428,39 @@
   .aviso-copia { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
     background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 5px; font-weight: 600; z-index: 10;
     width: max-content; max-width: calc(100vw - 32px); }
+  /* Modelo 3D */
+  .v3d { display: grid; gap: 10px; min-width: 0; }
+  .v3d-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+  .v3d-barra label, .v3d-corte { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 14px; color: var(--fg-2); }
+  .v3d-fuente select.campo { width: auto; max-width: min(100%, 420px); height: 32px; }
+  .v3d-corte input[type="range"] { width: 130px; accent-color: var(--accent); }
+  .v3d-corte output { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); min-width: 8.5ch; }
+  .segmentos { display: inline-flex; border: 1px solid var(--linea); border-radius: 5px; overflow: hidden; }
+  .segmentos button { border: 0; border-left: 1px solid var(--linea); background: var(--panel); color: var(--fg-2); padding: 5px 11px; font-size: 14px; cursor: pointer; }
+  .segmentos button:first-child { border-left: 0; }
+  .segmentos button:hover { color: var(--fg); }
+  .segmentos button[aria-pressed="true"] { background: var(--fg); color: var(--panel); }
+  .v3d-lienzo { position: relative; height: clamp(320px, 60vh, 640px); border: 1px solid var(--linea); border-radius: 6px; overflow: hidden; background: var(--campo); }
+  .v3d-lienzo canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  .v3d-lienzo canvas:active { cursor: grabbing; }
+  .v3d-msg { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 20px; text-align: center; color: var(--muted); font-size: 14px; }
+  .v3d-etiqueta { position: absolute; left: 10px; top: 8px; padding: 3px 8px; border-radius: 4px; font-size: 13px; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--linea); pointer-events: none; }
+  .v3d-ejes { position: absolute; right: 10px; bottom: 6px; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); pointer-events: none; }
+  .v3d-capas { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+  .v3d-capas label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+  .v3d-capas input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+  .v3d-capas .muestra { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--linea-2); }
+  .v3d-ayuda { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+  .v3d-exporta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+  .v3d-exporta .nota { font-size: 13px; flex: 1 1 260px; }
+  .v3d-holguras { margin-top: 12px; }
+  .v3d-como { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; color: var(--fg-2); max-width: 95ch; }
+  .v3d-como b { color: var(--fg); }
+  .v3d-como code { font-family: var(--font-mono); font-size: 12.5px; }
+  .tabla td.no { color: var(--error); font-weight: 600; }
+  .acciones-alt { display: inline-flex; gap: 4px; }
+  @media (max-width: 600px) { .v3d-ayuda { margin-left: 0; } .v3d-lienzo { height: 360px; } }
   @media (min-width: 980px) and (max-width: 1240px) { .barra h1 { font-size: 22px; } .boton { padding: 6px 11px; font-size: 14.5px; } .acciones { gap: 6px; } }
   @media (max-width: 560px) { .barra h1 { font-size: 22px; } .acciones { margin-left: 0; } .barra { position: static; } }
   @media (prefers-reduced-motion: no-preference) { .pestanas button, .boton, .campo { transition: color .12s, border-color .12s, filter .12s; } }

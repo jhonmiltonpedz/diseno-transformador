@@ -1083,7 +1083,7 @@ function pestanasDisponibles(r) {
   if (r.errores.length) return [["errores", "Revisar datos"], ...(r.nuc ? [["nucleo", "Núcleo"]] : []), ...(BUSQ ? [["busqueda", "Búsqueda"]] : [])];
   const devs = CLAVES.filter((k) => r.lista.some((i) => i.clave === k)).map((k) => [`dev-${k}`, NOMBRES[k]]);
   return [["resumen", "Resumen"], ["electrico", "1 · Cálculo eléctrico"], ["nucleo", "2 · Núcleo"], ...devs.map(([id, t]) => [id, `3 · ${t}`]),
-    ["distancias", "4 · Distancias"], ["vcc", "Vcc"], ...(BUSQ ? [["busqueda", "Búsqueda"]] : [])];
+    ["distancias", "4 · Distancias"], ["vcc", "Vcc"], ["3d", "Modelo 3D"], ...(BUSQ ? [["busqueda", "Búsqueda"]] : [])];
 }
 function pintarResultado() {
   const r = R, disp = pestanasDisponibles(r);
@@ -1098,10 +1098,12 @@ function pintarResultado() {
   else if (activa === "vcc") html = vistaVcc(r);
   else if (activa === "distancias") html = vistaDistancias(r);
   else if (activa === "busqueda") html = vistaBusqueda();
+  else if (activa === "3d") html = vista3d();
   else html = vistaDevanado(r, activa.slice(4));
   $("resultado").innerHTML = html;
   if (activa === "nucleo") conectarGrafico();
   if (activa === "busqueda") conectarGraficoBusqueda();
+  if (activa === "3d") conectar3d();
 }
 $("pestanas").addEventListener("click", (ev) => {
   const b = ev.target.closest("button[data-p]");

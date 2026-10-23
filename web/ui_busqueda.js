@@ -160,7 +160,7 @@ function vistaBusqueda() {
     return [`<b>${i + 1}</b>`, F.g(a.dn), a.n, a.b.toFixed(3), F.g(a.de), `<b>${a.uz.toFixed(2)}</b>`, err, textoDev(dI), textoDev(sec),
       F.miles(a.cobre), F.miles(a.nucleo), F.miles(a.p0), F.miles(a.pcu), `<b>${F.miles(a.peso)}</b>`, `<b>${F.miles(a.perdidas)}</b>`,
       a.pareto ? "✓" : "", a.verificado ? "✓" : '<span class="no">✗</span>',
-      `<button class="boton chico usar" type="button" data-alt="${i}"${vieja || !a.verificado ? " disabled" : ""}>Usar</button>`];
+      `<span class="acciones-alt"><button class="boton chico usar" type="button" data-alt="${i}"${vieja || !a.verificado ? " disabled" : ""}>Usar</button><button class="boton chico ver3d" type="button" data-alt="${i}" title="Ver la alternativa ${i + 1} en el modelo 3D"${vieja ? " disabled" : ""}>3D</button></span>`];
   });
   const tablaR = `<div class="tabla"><table class="busq"><thead><tr>${["#", "Dn (mm)", "N ref.", "B (T)", "De (mm)", "Vcc (%)", "Error rel. máx. (%)", "Devanado I", "Secundario", "Cobre (kg)", "Núcleo (kg)", "P0 (W)", "I²R (W)", "Peso total (kg)", "Pérdidas totales (W)", "Pareto", "Verif.", ""].map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${
     filas.map((f) => `<tr>${f.map((x, j) => `<td${j === 7 || j === 8 ? ' class="dev"' : ""}>${x}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
@@ -168,7 +168,7 @@ function vistaBusqueda() {
     aviejo, resumen, avisos,
     bloque(`Peso contra pérdidas · ${F.miles(c.cumplen)} combinaciones`, graficoBusqueda(r.todos, actual)),
     bloque(`Las ${r.resultados.length} primeras por ${ORDENES[o.orden].toLowerCase()}`, tablaR +
-      `<p class="nota-tabla">J = densidad con la corriente mayor (tensiones y tomas). Pareto = ninguna otra es más liviana y con menos pérdidas a la vez. Verif. = cargada en el diseño completo da los mismos números. Todas usan «Ajustar a la ventana» con la Hc, papeles, canales y distancias de la pantalla; los anchos de escalón son los óptimos de la tabla para cada Dn (los del diseño si Dn no cambia). El kR es el del cuadro por corriente. Las espiras son las mismas que da el diseño: REDONDEO.MAS con la B máxima. «Usar» carga la alternativa en el diseño: Dn, anchos, De, tipo, conductor y arreglo; las condiciones del diseño (B objetivo, J máxima, Vcc objetivo) no cambian.</p>`),
+      `<p class="nota-tabla">J = densidad con la corriente mayor (tensiones y tomas). Pareto = ninguna otra es más liviana y con menos pérdidas a la vez. Verif. = cargada en el diseño completo da los mismos números. Todas usan «Ajustar a la ventana» con la Hc, papeles, canales y distancias de la pantalla; los anchos de escalón son los óptimos de la tabla para cada Dn (los del diseño si Dn no cambia). El kR es el del cuadro por corriente. Las espiras son las mismas que da el diseño: REDONDEO.MAS con la B máxima. «Usar» carga la alternativa en el diseño: Dn, anchos, De, tipo, conductor y arreglo; las condiciones del diseño (B objetivo, J máxima, Vcc objetivo) no cambian. «3D» la muestra en el modelo 3D sin cargarla.</p>`),
   ].join("");
 }
 

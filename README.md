@@ -5,7 +5,7 @@
 
 Herramienta de ingeniería para diseñar transformadores trifásicos de distribución, desde los datos del cliente hasta la tensión de cortocircuito (Vcc), las pérdidas y los esfuerzos dieléctricos. Reemplaza un conjunto de hojas de cálculo sueltas por un solo flujo guiado: **el núcleo fija el espacio, los devanados se construyen dentro de la ventana y el programa dice qué límite gobierna y cuántos milímetros faltan cuando algo no entra.**
 
-La misma lógica está escrita dos veces, en **Python** (Jupyter con ipywidgets) y en **JavaScript** (una página web sin dependencias), y una **verificación automática** comprueba en cada cambio que las dos den exactamente los mismos resultados.
+La misma lógica está escrita dos veces, en **Python** (Jupyter con ipywidgets) y en **JavaScript** (una página web sin dependencias; solo la vista 3D usa three.js), y una **verificación automática** comprueba en cada cambio que las dos den exactamente los mismos resultados.
 
 **[→ Abrir la demo](https://jhonmiltonpedz.github.io/diseno-transformador/)** · [Mapa de condiciones del programa](https://jhonmiltonpedz.github.io/diseno-transformador/mapa-condiciones.html)
 
@@ -13,7 +13,7 @@ La misma lógica está escrita dos veces, en **Python** (Jupyter con ipywidgets)
 
 ### In English
 
-A design tool for three-phase distribution transformers: customer data → stepped core → windings fitted inside the core window → electrical clearances → short-circuit impedance (Vcc), no-load and load losses, and dielectric stresses. It also searches all buildable conductor arrangements for a target Vcc and plots the weight-vs-losses Pareto front. The same engineering logic is implemented in Python (Jupyter/ipywidgets) and in dependency-free JavaScript, and a CI check runs 128 documented design rules in both and requires identical results. The interface is in Spanish.
+A design tool for three-phase distribution transformers: customer data → stepped core → windings fitted inside the core window → electrical clearances → short-circuit impedance (Vcc), no-load and load losses, and dielectric stresses. It also searches all buildable conductor arrangements for a target Vcc and plots the weight-vs-losses Pareto front, and generates a 3D model of the active part (the stepped core as a single solid, windings with their cooling ducts, major insulation) plus an estimated tank, straight from the calculation, for the current design or any search alternative: it can be orbited and sectioned in the browser and exported to STL/OBJ for CAD. The same engineering logic is implemented in Python (Jupyter/ipywidgets) and in dependency-free JavaScript, and a CI check runs 128 documented design rules in both and requires identical results. The interface is in Spanish.
 
 ![Pantalla principal: datos a la izquierda y resultados a la derecha](docs/img/pantalla-principal.png)
 
@@ -27,7 +27,7 @@ El diseño sigue el orden real del taller, y la pantalla también:
 | **2 · Núcleo** | Dn, De, Hc y anchos de escalón | Chapas por escalón, sección neta, espiras de referencia (E = 4.44·f·N·B·A), inducción real, peso y pérdidas en vacío |
 | **3 · Devanados** | Conductor, arreglo y tipo (continuo, galleta, francés, hélice simple o doble) | Espiras y error de relación de cada tensión y toma, capas, radial, axial, densidad de corriente |
 | **4 · Distancias** | Mínimos de aislamiento mayor, barreras, rellenos | Distancia real al yugo y entre fases, esfuerzos dieléctricos núcleo–bobina y bobina–bobina |
-| **5 · Resultados** | — | Vcc, cobre, pérdidas I²R, semáforo de límites con % de uso y el límite que gobierna |
+| **5 · Resultados** | — | Vcc, cobre, pérdidas I²R, semáforo de límites con % de uso y el límite que gobierna, y el modelo 3D |
 
 Con **«Ajustar a la ventana»** las espiras por capa salen de la altura que deja el núcleo (Hc − 2 × distancia mínima al yugo) y de ahí el número de capas, el radial y los diámetros. Si un devanado no entra, el programa no lo esconde: calcula igual y marca en rojo cuántos milímetros faltan.
 
@@ -36,6 +36,22 @@ La **búsqueda por Vcc** prueba todas las combinaciones fabricables de conductor
 <p align="center">
   <img src="docs/img/semaforo-limites.png" width="49%" alt="Semáforo de límites con porcentaje de uso">
   <img src="docs/img/busqueda-pareto.png" width="49%" alt="Búsqueda por Vcc: frente de Pareto de peso contra pérdidas">
+</p>
+
+## Modelo 3D
+
+La pestaña **Modelo 3D** arma el transformador con los números del cálculo, sin medidas dibujadas a ojo: se rehace solo con cada dato que cambia y también se puede ver cualquier alternativa de la búsqueda por Vcc (botón «3D») antes de cargarla.
+
+- **Núcleo:** un marco de chapas por escalón (C = 2·De + a, A = Hc + a₁ + a, ventanas de (De − a) x (Hc + a₁ − a), esquinas cortadas g), el escalón 1 al centro y los demás mitad a cada lado, unidos en **un solo sólido cerrado** sin caras internas. Su volumen x 7650 kg/m³ da exactamente el peso del cálculo.
+- **Devanados:** con los Ø interior y exterior y la altura del montaje, centrados en la ventana, con sus canales internos y la galleta en dos bobinas.
+- **Aislamiento y tanque:** barreras entre devanados, tubos y calzas hasta el yugo; el tanque y el volumen de aceite son estimados, con holguras que se pueden cambiar.
+- **Vista y CAD:** gira, acerca, corte vertical u horizontal con tapas (las piezas cortadas se ven macizas), capas que se prenden y apagan, el nombre de la pieza bajo el puntero, y avisos si algo choca (fases que se cruzan, un devanado más alto que la ventana). Se descarga en **STL** (binario) u **OBJ** (un objeto por pieza), en mm.
+
+[`verificacion/prueba_3d.js`](verificacion/prueba_3d.js) comprueba, también en CI y sobre alternativas de la búsqueda, que cada pieza sea un sólido cerrado y bien orientado, que ninguna comparta aristas con otra (el STL se abre como sólidos sueltos), y que medidas, volúmenes, peso del núcleo, espacio de la galleta y avisos de choque coincidan con el cálculo. La vista usa [three.js](https://threejs.org), que la página trae de un CDN solo al abrir esa pestaña; sin internet, las descargas funcionan igual.
+
+<p align="center">
+  <img src="docs/img/modelo-3d.png" width="49%" alt="Modelo 3D: núcleo escalonado, devanados, calzas y tanque estimado">
+  <img src="docs/img/modelo-3d-corte.png" width="49%" alt="Modelo 3D con corte horizontal: devanados concéntricos con sus canales y la sección escalonada del núcleo">
 </p>
 
 ## Cálculos principales
@@ -77,16 +93,17 @@ Resultado actual: **128 condiciones, 94 con caso propio, todas pasan; 120 de 120
 ```
 python/DISENO_DE_TRANSFORMADOR.py   programa en Jupyter (ipywidgets): pantalla de ingreso y hojas de cálculo
 web/                                fuentes de la página: calc.js (cálculo), optimiza.js (búsqueda por Vcc),
-                                    ui.js y ui_busqueda.js (interfaz), plantilla.html, armar.py
-docs/index.html                     la página armada, un solo archivo sin dependencias (la demo)
+                                    modelo3d.js (geometría 3D y exportar STL/OBJ), ui.js, ui_busqueda.js y
+                                    vista3d.js (interfaz), plantilla.html, armar.py
+docs/index.html                     la página armada, un solo archivo (la demo)
 docs/mapa-condiciones.html          el mapa de condiciones con la última revisión
 verificacion/                       reglas.py (catálogo), disparar.py / disparar.js (corren cada caso en cada lenguaje),
-                                    comparar_mapa.py (la revisión), armar_mapa.py
+                                    comparar_mapa.py (la revisión), armar_mapa.py, prueba_3d.js (modelo 3D)
 ```
 
 ## Uso
 
-**En el navegador:** abre la [demo](https://jhonmiltonpedz.github.io/diseno-transformador/) o `docs/index.html` directamente; no necesita servidor ni instalación. Los datos se guardan en el navegador y se pueden copiar y cargar como JSON. La demo abre con el diseño de referencia, que con De = 510 mm no entra por 14 mm entre fases: el programa lo marca. Con De = 525 mm cumple (es la captura de arriba).
+**En el navegador:** abre la [demo](https://jhonmiltonpedz.github.io/diseno-transformador/) o `docs/index.html` directamente; no necesita servidor ni instalación (la vista 3D necesita internet la primera vez que se abre, para traer three.js). Los datos se guardan en el navegador y se pueden copiar y cargar como JSON. La demo abre con el diseño de referencia, que con De = 510 mm no entra por 14 mm entre fases: el programa lo marca. Con De = 525 mm cumple (es la captura de arriba).
 
 **En Jupyter:**
 
@@ -99,6 +116,7 @@ jupyter lab            # y en una celda:  %run python/DISENO_DE_TRANSFORMADOR.py
 
 ```bash
 python3 verificacion/comparar_mapa.py   # revisa las 128 condiciones en Python y en la web
+node verificacion/prueba_3d.js          # revisa el modelo 3D contra el cálculo
 python3 verificacion/armar_mapa.py      # vuelve a armar docs/mapa-condiciones.html
 python3 web/armar.py                    # vuelve a armar docs/index.html desde web/
 ```
@@ -109,10 +127,11 @@ python3 web/armar.py                    # vuelve a armar docs/index.html desde w
 - Los datos de ejemplo son genéricos. Tres valores del diseño de referencia están marcados como supuestos por validar: temperatura de referencia 75 °C (IEC 60076-1), entre fases mínimo 9 mm y 3 transposiciones en la baja tensión.
 - La constante K de la Vcc es 0.018 (la de las hojas originales); el valor teórico es 0.01777 y la diferencia es de 1.3 % en la Vcc reactiva.
 - Las pérdidas en carga son en corriente continua, sin pérdidas adicionales.
+- El modelo 3D es de la parte activa: los canales internos se dibujan parejos a lo largo del radial, las calzas son de dibujo y el tanque no sale de un cálculo térmico (sin radiadores ni accesorios). Está solo en la página web.
 
 ## Tecnologías
 
-Python 3 · ipywidgets · JavaScript, HTML, CSS y SVG sin librerías · Node.js (verificación) · GitHub Actions · GitHub Pages
+Python 3 · ipywidgets · JavaScript, HTML, CSS y SVG sin librerías · three.js (solo la vista 3D, con WebGL) · Node.js (verificación) · GitHub Actions · GitHub Pages
 
 ## Autor
 

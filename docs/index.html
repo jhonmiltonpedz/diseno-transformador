@@ -9,6 +9,8 @@
 <title>Diseño de transformador</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<!-- three.js solo para la pestaña «Modelo 3D»: se descarga recién al abrirla (import dinámico) -->
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 <style>
   /* Editor de una pantalla: barra con acciones, pasos con su estado, franja de estado y dos columnas (datos a la
      izquierda, resultados en pestañas a la derecha). Tema CLARO por defecto (se lee mejor, sobre todo en letra chica) y
@@ -434,6 +436,39 @@
   .aviso-copia { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
     background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 5px; font-weight: 600; z-index: 10;
     width: max-content; max-width: calc(100vw - 32px); }
+  /* Modelo 3D */
+  .v3d { display: grid; gap: 10px; min-width: 0; }
+  .v3d-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+  .v3d-barra label, .v3d-corte { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 14px; color: var(--fg-2); }
+  .v3d-fuente select.campo { width: auto; max-width: min(100%, 420px); height: 32px; }
+  .v3d-corte input[type="range"] { width: 130px; accent-color: var(--accent); }
+  .v3d-corte output { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); min-width: 8.5ch; }
+  .segmentos { display: inline-flex; border: 1px solid var(--linea); border-radius: 5px; overflow: hidden; }
+  .segmentos button { border: 0; border-left: 1px solid var(--linea); background: var(--panel); color: var(--fg-2); padding: 5px 11px; font-size: 14px; cursor: pointer; }
+  .segmentos button:first-child { border-left: 0; }
+  .segmentos button:hover { color: var(--fg); }
+  .segmentos button[aria-pressed="true"] { background: var(--fg); color: var(--panel); }
+  .v3d-lienzo { position: relative; height: clamp(320px, 60vh, 640px); border: 1px solid var(--linea); border-radius: 6px; overflow: hidden; background: var(--campo); }
+  .v3d-lienzo canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  .v3d-lienzo canvas:active { cursor: grabbing; }
+  .v3d-msg { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 20px; text-align: center; color: var(--muted); font-size: 14px; }
+  .v3d-etiqueta { position: absolute; left: 10px; top: 8px; padding: 3px 8px; border-radius: 4px; font-size: 13px; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--linea); pointer-events: none; }
+  .v3d-ejes { position: absolute; right: 10px; bottom: 6px; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); pointer-events: none; }
+  .v3d-capas { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+  .v3d-capas label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+  .v3d-capas input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+  .v3d-capas .muestra { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--linea-2); }
+  .v3d-ayuda { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+  .v3d-exporta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+  .v3d-exporta .nota { font-size: 13px; flex: 1 1 260px; }
+  .v3d-holguras { margin-top: 12px; }
+  .v3d-como { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; color: var(--fg-2); max-width: 95ch; }
+  .v3d-como b { color: var(--fg); }
+  .v3d-como code { font-family: var(--font-mono); font-size: 12.5px; }
+  .tabla td.no { color: var(--error); font-weight: 600; }
+  .acciones-alt { display: inline-flex; gap: 4px; }
+  @media (max-width: 600px) { .v3d-ayuda { margin-left: 0; } .v3d-lienzo { height: 360px; } }
   @media (min-width: 980px) and (max-width: 1240px) { .barra h1 { font-size: 22px; } .boton { padding: 6px 11px; font-size: 14.5px; } .acciones { gap: 6px; } }
   @media (max-width: 560px) { .barra h1 { font-size: 22px; } .acciones { margin-left: 0; } .barra { position: static; } }
   @media (prefers-reduced-motion: no-preference) { .pestanas button, .boton, .campo { transition: color .12s, border-color .12s, filter .12s; } }
@@ -1685,6 +1720,325 @@ function explicarBusqueda(c, o, optimiza, d) {
 
 // (Node) if (typeof module !== "undefined") module.exports = { buscarCombinaciones, OPT_EJEMPLO, aplicarAlternativa, arreglosTipo, anchosParaDn };
 
+// ======================================================================
+// MODELO 3D DE LA PARTE ACTIVA (Y DE UN TANQUE ESTIMADO)
+// Se genera solo con el resultado del cálculo (calcularTodo): ninguna medida se dibuja «a ojo».
+// Ejes en mm: x a lo largo del núcleo (fases A, B y C en x = −De, 0 y +De), y = profundidad (el espesor de
+// las chapas), z = vertical, con el centro de la ventana en z = 0.
+// Cada pieza es una malla de triángulos cerrada (sólidos que no se cruzan), lista para STL u OBJ.
+//
+//  Núcleo: cada escalón es un marco de chapas (la misma forma con que se calcula su peso):
+//    rectángulo exterior C x A con las 4 esquinas cortadas a 45° (traslape g), menos las 2 ventanas.
+//    C = 2·De + a,  A = Hc + a₁ + a,  ventana = (De − a) x (Hc + a₁ − a)   (a = ancho del escalón)
+//    El escalón 1 (el más ancho) va al centro; cada escalón siguiente se reparte mitad y mitad a los lados.
+//    Todo el núcleo es un solo sólido cerrado, sin caras internas (así el corte se ve limpio y el STL es válido).
+//    Volumen x 7650 kg/m³ = peso del núcleo calculado (se verifica en verificacion/prueba_3d.js).
+//  Devanados: tubos de eje vertical alrededor de cada columna, con los diámetros y la altura del montaje.
+//    Los canales internos de refrigeración se reparten parejos a lo largo del radial (supuesto de dibujo);
+//    la galleta son 2 bobinas separadas 20 mm.
+//  Aislamiento: barrera entre devanados (al centro del canal, con el tubo rígido que sobresale), tubo
+//    núcleo–bobina, tubo enrollado exterior y calzas (8 por extremo) que llenan la distancia al yugo.
+//  Tanque: estimado, con holguras que se pueden cambiar (no hay cálculo térmico ni de radiadores).
+// ======================================================================
+const SEGMENTOS_3D = 96;                          // lados de los cilindros
+const HOLGURA_CAD = 0.01;                         // mm: dos piezas que se tocan no comparten vértices (el STL queda en sólidos sueltos)
+const CALZAS_POR_EXTREMO = 8, ANCHO_CALZA = 30;   // mm
+const TANQUE_ESTIMADO = { lateral: 60, frente: 60, fondo: 50, superior: 200, pared: 4, tapa: 6 };   // mm
+const COLORES_3D = { nucleo: "#9aa3ab", I: "#b4612a", II: "#d98a45", III: "#e9b27c", aislamiento: "#d8c49b", tanque: "#7e98ad" };
+const FASES_3D = ["A", "B", "C"];
+
+// ---------- vectores ----------
+const v3 = (x, y, z) => [x, y, z];
+const resta = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const suma = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const punto = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cruz = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unitario = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const centro = (pts) => pts.reduce((s, p) => suma(s, p), [0, 0, 0]).map((c) => c / pts.length);
+
+// ---------- mallas ----------
+function nuevaMalla(id, nombre, grupo, color) { return { id, nombre, grupo, color, pos: [], nor: [], solidos: 0 }; }
+function triangulo(m, a, b, c, na, nb, nc) { m.pos.push(...a, ...b, ...c); m.nor.push(...na, ...nb, ...nc); }
+// Normal de un polígono plano (método de Newell)
+function normalNewell(pts) {
+  const n = [0, 0, 0];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    n[0] += (a[1] - b[1]) * (a[2] + b[2]); n[1] += (a[2] - b[2]) * (a[0] + b[0]); n[2] += (a[0] - b[0]) * (a[1] + b[1]);
+  }
+  return n;
+}
+// Cara plana convexa, con su normal hacia «hacia»
+function caraPlana(m, pts, hacia) {
+  let p = pts, n = normalNewell(pts);
+  if (punto(n, hacia) < 0) { p = pts.slice().reverse(); n = [-n[0], -n[1], -n[2]]; }
+  n = unitario(n);
+  for (let i = 1; i < p.length - 1; i++) triangulo(m, p[0], p[i], p[i + 1], n, n, n);
+}
+// Polígono plano en abanico desde su centro (sirve con vértices alineados, donde el abanico desde un vértice
+// daría triángulos sin área)
+function abanico(m, pts, hacia) {
+  const c = centro(pts);
+  let p = pts, n = normalNewell(pts);
+  if (punto(n, hacia) < 0) { p = pts.slice().reverse(); n = [-n[0], -n[1], -n[2]]; }
+  n = unitario(n);
+  for (let i = 0; i < p.length; i++) triangulo(m, c, p[i], p[(i + 1) % p.length], n, n, n);
+}
+// Lazos del marco de un escalón en el plano x-z: contorno exterior (con las esquinas cortadas g) y las 2 ventanas,
+// más la cara partida en yugos y columnas. Todos los escalones tienen los mismos vértices en el mismo orden.
+function lazosMarco(De, E, a, g) {
+  const C2 = De + a / 2, zt = E / 2 + a / 2, zb = E / 2 - a / 2, x1 = -De + a / 2, x2 = -a / 2, x3 = a / 2, x4 = De - a / 2, ch = g > 0;
+  const ext = [[-C2, -zb], ...(ch ? [[-C2, -zt + g], [-C2 + g, -zt], [C2 - g, -zt], [C2, -zt + g]] : [[-C2, -zt], [C2, -zt]]), [C2, -zb],
+    [C2, zb], ...(ch ? [[C2, zt - g], [C2 - g, zt], [-C2 + g, zt], [-C2, zt - g]] : [[C2, zt], [-C2, zt]]), [-C2, zb]];
+  const kB = ch ? 5 : 3;
+  return { ext,
+    ventanas: [[[x1, -zb], [x2, -zb], [x2, zb], [x1, zb]], [[x3, -zb], [x4, -zb], [x4, zb], [x3, zb]]],
+    yugoInf: [...ext.slice(0, kB + 1), [x4, -zb], [x3, -zb], [x2, -zb], [x1, -zb]],
+    yugoSup: [...ext.slice(kB + 1), [x1, zb], [x2, zb], [x3, zb], [x4, zb]],
+    columnas: [[[-C2, -zb], [x1, -zb], [x1, zb], [-C2, zb]], [[x2, -zb], [x3, -zb], [x3, zb], [x2, zb]], [[x4, -zb], [C2, -zb], [C2, zb], [x4, zb]]] };
+}
+// Prisma convexo: polígono base (en orden) desplazado por «ext»
+function prisma(m, base, ext) {
+  const tope = base.map((p) => suma(p, ext)), c = centro(base.concat(tope));
+  caraPlana(m, base, resta(centro(base), c));
+  caraPlana(m, tope, resta(centro(tope), c));
+  for (let i = 0; i < base.length; i++) {
+    const j = (i + 1) % base.length, lado = [base[i], base[j], tope[j], tope[i]];
+    caraPlana(m, lado, resta(centro(lado), c));
+  }
+  m.solidos++;
+}
+// Caja abierta arriba (fondo y 4 paredes en un solo sólido cerrado): interior ±lx x ±ly, de z0 a z1, pared «p»
+function cajaAbierta(m, lx, ly, z0, z1, p) {
+  const ext = [v3(-lx - p, -ly - p, 0), v3(lx + p, -ly - p, 0), v3(lx + p, ly + p, 0), v3(-lx - p, ly + p, 0)];
+  const int = [v3(-lx, -ly, 0), v3(lx, -ly, 0), v3(lx, ly, 0), v3(-lx, ly, 0)];
+  const a = (q, z) => v3(q[0], q[1], z), cz = v3(0, 0, (z0 + z1) / 2);
+  caraPlana(m, ext.map((q) => a(q, z0 - p)), v3(0, 0, -1));          // fondo por fuera
+  caraPlana(m, int.map((q) => a(q, z0)), v3(0, 0, 1));                // fondo por dentro
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4;
+    const fuera = [a(ext[i], z0 - p), a(ext[j], z0 - p), a(ext[j], z1), a(ext[i], z1)];
+    caraPlana(m, fuera, resta(centro(fuera), cz));                     // pared por fuera
+    const dentro = [a(int[i], z0), a(int[j], z0), a(int[j], z1), a(int[i], z1)];
+    caraPlana(m, dentro, resta(cz, centro(dentro)));                   // pared por dentro
+    caraPlana(m, [a(ext[i], z1), a(ext[j], z1), a(int[j], z1), a(int[i], z1)], v3(0, 0, 1));   // borde de arriba
+  }
+  m.solidos++;
+}
+// Caja alineada con los ejes
+function caja(m, x0, x1, y0, y1, z0, z1) {
+  prisma(m, [v3(x0, y0, z0), v3(x1, y0, z0), v3(x1, y1, z0), v3(x0, y1, z0)], v3(0, 0, z1 - z0));
+}
+// Tubo de eje vertical en (cx, cy): radios r1 < r2, alturas z0 < z1. Paredes con normales suaves (radiales).
+function tubo(m, cx, cy, r1, r2, z0, z1, n = SEGMENTOS_3D) {
+  const ang = Array.from({ length: n + 1 }, (_, j) => (2 * Math.PI * (j % n)) / n);
+  const cs = ang.map(Math.cos), sn = ang.map(Math.sin);
+  const P = (r, j, z) => v3(cx + r * cs[j], cy + r * sn[j], z);
+  for (let j = 0; j < n; j++) {
+    const k = j + 1, na = v3(cs[j], sn[j], 0), nb = v3(cs[k], sn[k], 0);
+    const ia = v3(-cs[j], -sn[j], 0), ib = v3(-cs[k], -sn[k], 0);
+    triangulo(m, P(r2, j, z0), P(r2, k, z0), P(r2, k, z1), na, nb, nb);        // pared exterior
+    triangulo(m, P(r2, j, z0), P(r2, k, z1), P(r2, j, z1), na, nb, na);
+    triangulo(m, P(r1, j, z0), P(r1, k, z1), P(r1, k, z0), ia, ib, ib);        // pared interior
+    triangulo(m, P(r1, j, z0), P(r1, j, z1), P(r1, k, z1), ia, ia, ib);
+    caraPlana(m, [P(r1, j, z1), P(r2, j, z1), P(r2, k, z1), P(r1, k, z1)], v3(0, 0, 1));    // tapa de arriba
+    caraPlana(m, [P(r1, j, z0), P(r2, j, z0), P(r2, k, z0), P(r1, k, z0)], v3(0, 0, -1));   // tapa de abajo
+  }
+  m.solidos++;
+}
+// Calza radial (bloque entre r1 y r2, de ancho «w», centrado en el ángulo «t»); la cara de afuera se recorta
+// para que sus esquinas no pasen del radio r2
+function calza(m, cx, cy, r1, r2, t, w, z0, z1) {
+  const u = v3(Math.cos(t), Math.sin(t), 0), q = v3(-Math.sin(t), Math.cos(t), 0), h = w / 2, r2c = Math.sqrt(r2 * r2 - h * h);
+  const P = (r, s) => v3(cx + r * u[0] + s * q[0], cy + r * u[1] + s * q[1], z0);
+  prisma(m, [P(r1, -h), P(r2c, -h), P(r2c, h), P(r1, h)], v3(0, 0, z1 - z0));
+}
+
+// ---------- el modelo ----------
+// r = calcularTodo(d); d = los datos del diseño; t = holguras del tanque (mm)
+function modelo3d(r, d, t = TANQUE_ESTIMADO) {
+  if (!r || !r.mont || !r.nuc || (r.errores && r.errores.length)) return null;
+  const nuc = r.nuc, mont = r.mont, partes = [], avisos = [];
+  const esc = nuc.escalones.filter((e) => e.ancho > 0 && e.espesor > 0);
+  const a1 = esc[0].ancho, E = nuc.hc + a1, g = Math.max(0, nuc.g || 0);
+  const xs = [-nuc.de, 0, nuc.de];
+
+  // --- núcleo: UN sólido cerrado, sin caras internas, con los marcos de todos los escalones. El marco de cada escalón
+  //     queda dentro del anterior (mismos ejes, columnas más angostas, yugos más delgados, ventanas más altas), así que
+  //     entre dos paquetes vecinos la única cara es el anillo «marco k − marco k+1». El escalón 1 va al centro.
+  const mNuc = nuevaMalla("nucleo", "Núcleo", "nucleo", COLORES_3D.nucleo);
+  const gc = Math.min(g, ...esc.map((e) => e.ancho)), LM = esc.map((e) => lazosMarco(nuc.de, E, e.ancho, gc));
+  const Y = [esc[0].espesor / 2];                                       // caras de los paquetes, del centro hacia afuera
+  for (let i = 1; i < esc.length; i++) Y.push(Y[i - 1] + esc[i].espesor / 2);
+  const P = (q, y) => v3(q[0], y, q[1]);
+  const pared = (lazo, ya, yb, adentro) => {
+    const c = centro(lazo.map((q) => P(q, 0)));
+    lazo.forEach((q, j) => {
+      const w = lazo[(j + 1) % lazo.length], med = v3((q[0] + w[0]) / 2, 0, (q[1] + w[1]) / 2);
+      caraPlana(mNuc, [P(q, ya), P(w, ya), P(w, yb), P(q, yb)], adentro ? resta(c, med) : resta(med, c));
+    });
+  };
+  esc.forEach((e, i) => {
+    for (const [ya, yb] of i === 0 ? [[-Y[0], Y[0]]] : [[Y[i - 1], Y[i]], [-Y[i], -Y[i - 1]]]) {
+      pared(LM[i].ext, ya, yb, false);
+      for (const v of LM[i].ventanas) pared(v, ya, yb, true);
+    }
+  });
+  for (const sg of [1, -1]) {
+    const hacia = v3(0, sg, 0);
+    for (let i = 0; i < esc.length - 1; i++) {                          // anillos entre paquetes vecinos
+      const y = sg * Y[i];
+      for (const [a, b] of [[LM[i].ext, LM[i + 1].ext], ...LM[i].ventanas.map((v, k) => [v, LM[i + 1].ventanas[k]])])
+        a.forEach((q, j) => { const k = (j + 1) % a.length; caraPlana(mNuc, [P(q, y), P(a[k], y), P(b[k], y), P(b[j], y)], hacia); });
+    }
+    const u = LM[esc.length - 1], y = sg * Y[esc.length - 1];          // cara del último paquete: el marco entero
+    for (const pol of [u.yugoInf, u.yugoSup]) abanico(mNuc, pol.map((q) => P(q, y)), hacia);
+    for (const col of u.columnas) caraPlana(mNuc, col.map((q) => P(q, y)), hacia);
+  }
+  mNuc.solidos = 1;
+  partes.push(mNuc);
+  // esquinas del escalón dentro del círculo de Dn (con el redondeo a 10 chapas pueden pasarse un poco)
+  let rEsquina = 0, yA = 0;
+  for (const e of esc) { yA += e.espesor; rEsquina = Math.max(rEsquina, Math.hypot(e.ancho / 2, yA / 2)); }
+
+  // --- devanados, del núcleo hacia afuera, en las 3 fases
+  const canalesDe = Object.fromEntries((r.lista || []).map((it) => [it.clave, (it.res && it.res.canales) || []]));
+  const filas = mont.filas, alto = (f) => f.axial;
+  for (const f of filas) {
+    const can = canalesDe[f.clave] || [], sumaCan = can.reduce((s, c) => s + c, 0);
+    const cobre = (f.radial - sumaCan) / (can.length + 1);
+    const tramos = f.n_sec > 1
+      ? [[-f.axial / 2, -f.axial / 2 + f.axial_seccion], [f.axial / 2 - f.axial_seccion, f.axial / 2]]
+      : [[-f.axial / 2, f.axial / 2]];
+    xs.forEach((xc, fi) => {
+      const m = nuevaMalla(`dev-${f.clave}-${FASES_3D[fi]}`, `${f.nombre} · fase ${FASES_3D[fi]}`, "devanados", COLORES_3D[f.clave] || COLORES_3D.I);
+      for (const [z0, z1] of tramos) {
+        let ri = f.d_int / 2;
+        for (let k = 0; k <= can.length; k++) {
+          tubo(m, xc, 0, ri, ri + cobre, z0, z1);
+          ri += cobre + (k < can.length ? can[k] : 0);
+        }
+      }
+      m.clave = f.clave;
+      partes.push(m);
+    });
+    if (f.al_yugo < 0) avisos.push(`${f.nombre}: es ${(-2 * f.al_yugo).toFixed(1)} mm más alto que la ventana: choca con los yugos.`);
+  }
+  if (mont.entre_fases_real < 0) avisos.push(`Entre fases: las bobinas de fases vecinas se cruzan ${(-mont.entre_fases_real).toFixed(1)} mm.`);
+  if (filas.length && rEsquina > filas[0].d_int / 2 - (d.tubo_nucleo || 0))
+    avisos.push(`Núcleo: una esquina de escalón (r = ${rEsquina.toFixed(1)} mm) toca el devanado interno.`);
+
+  // --- aislamiento mayor
+  const mAis = nuevaMalla("aislamiento", "Aislamiento (barreras, tubos y calzas)", "aislamiento", COLORES_3D.aislamiento);
+  const mTubo = nuevaMalla("tubo-exterior", "Tubo enrollado exterior", "aislamiento", COLORES_3D.aislamiento);
+  mTubo.transparente = true;                                            // en la vista deja ver el cobre
+  const hTubo = (h) => Math.min(h + (d.tubo_rigido || 0), nuc.hc);     // el tubo rígido sobresale, sin pasar la ventana
+  const barreras = [];
+  for (const xc of xs) {
+    if (filas.length && d.tubo_nucleo > 0) {                            // tubo núcleo–bobina
+      const r2 = filas[0].d_int / 2, r1 = Math.max(r2 - d.tubo_nucleo, rEsquina + 0.5), h = hTubo(alto(filas[0]));
+      if (r2 - r1 > 0.1) tubo(mAis, xc, 0, r1, r2, -h / 2, h / 2);
+    }
+    for (let i = 1; i < filas.length; i++) {                             // barrera al centro del canal entre devanados
+      const ra = filas[i - 1].d_ext / 2, rb = filas[i].d_int / 2, e = Math.min(d.e_barrera || 0, (rb - ra) * 0.8);
+      if (e > 0) {
+        const mid = (ra + rb) / 2, h = hTubo(Math.max(alto(filas[i - 1]), alto(filas[i])));
+        tubo(mAis, xc, 0, mid - e / 2, mid + e / 2, -h / 2, h / 2);
+        if (xc === xs[0]) barreras.push({ entre: `${filas[i - 1].nombre} – ${filas[i].nombre}`, r: mid, espesor: e, alto: h });
+      }
+    }
+    if (filas.length && mont.tubo > 2 * HOLGURA_CAD) {                  // tubo enrollado exterior (va sobre el último devanado)
+      const u = filas[filas.length - 1];
+      tubo(mTubo, xc, 0, u.d_ext / 2 + HOLGURA_CAD, u.d_ext / 2 + mont.tubo, -u.axial / 2, u.axial / 2);
+    }
+    for (const f of filas) {                                             // calzas: llenan la distancia al yugo
+      if (f.al_yugo < 1) continue;
+      const w = Math.min(ANCHO_CALZA, (Math.PI * f.d_int) / CALZAS_POR_EXTREMO / 3);
+      for (let j = 0; j < CALZAS_POR_EXTREMO; j++) {
+        const ang = (2 * Math.PI * (j + 0.5)) / CALZAS_POR_EXTREMO;
+        calza(mAis, xc, 0, f.d_int / 2, f.d_ext / 2, ang, w, f.axial / 2, nuc.hc / 2);
+        calza(mAis, xc, 0, f.d_int / 2, f.d_ext / 2, ang, w, -nuc.hc / 2, -f.axial / 2);
+      }
+    }
+  }
+  if (mAis.solidos) partes.push(mAis);
+  if (mTubo.solidos) partes.push(mTubo);
+
+  // --- tanque estimado (paredes, fondo y tapa)
+  const dTot = mont.d_total, prof = esc.reduce((s, e) => s + e.espesor, 0);
+  const altoNucleo = E + a1, L = 2 * nuc.de + Math.max(dTot, a1) + 2 * t.lateral, W = Math.max(dTot, prof) + 2 * t.frente;
+  const zf = -altoNucleo / 2 - t.fondo, zt = altoNucleo / 2 + t.superior, p = Math.max(t.pared, 1), ala = 20;
+  const mTan = nuevaMalla("tanque", "Tanque (estimado)", "tanque", COLORES_3D.tanque);
+  cajaAbierta(mTan, L / 2, W / 2, zf, zt, p);                                           // fondo y paredes: un solo sólido
+  caja(mTan, -L / 2 - p - ala, L / 2 + p + ala, -W / 2 - p - ala, W / 2 + p + ala, zt, zt + Math.max(t.tapa, 1));   // tapa con ala
+  partes.push(mTan);
+
+  // --- medidas y volúmenes (volumen exacto de cada malla, por el teorema de la divergencia)
+  const vol = (ms) => ms.reduce((s, m) => s + volumenMalla(m), 0);
+  const vNuc = volumenMalla(mNuc), vDev = vol(partes.filter((m) => m.grupo === "devanados")), vAis = vol(partes.filter((m) => m.grupo === "aislamiento"));
+  const vInterior = L * W * (zt - zf);
+  const medidas = {
+    nucleo: { largo: 2 * nuc.de + a1, alto: altoNucleo, profundidad: prof, volumen_l: vNuc / 1e6, peso_modelo: (vNuc / 1e9) * RHO_FE,
+      peso_calculado: nuc.peso, r_esquina: rEsquina },
+    devanados: filas.map((f) => ({ clave: f.clave, nombre: f.nombre, d_int: f.d_int, d_ext: f.d_ext, alto: f.axial, secciones: f.n_sec,
+      canales: (canalesDe[f.clave] || []).length, al_yugo: f.al_yugo })),
+    barreras,
+    tanque: { largo: L, ancho: W, alto: zt - zf, volumen_interior_l: vInterior / 1e6,
+      aceite_l: (vInterior - vNuc - vDev - vAis) / 1e6, holguras: { ...t } },
+    triangulos: partes.reduce((s, m) => s + m.pos.length / 9, 0),
+  };
+  return { partes, medidas, avisos, caja: { x: [-L / 2 - p - ala, L / 2 + p + ala], y: [-W / 2 - p - ala, W / 2 + p + ala], z: [zf - p, zt + t.tapa] } };
+}
+
+// Volumen encerrado por una malla cerrada: Σ a·(b × c) / 6
+function volumenMalla(m) {
+  let v = 0;
+  const p = m.pos;
+  for (let i = 0; i < p.length; i += 9)
+    v += p[i] * (p[i + 4] * p[i + 8] - p[i + 5] * p[i + 7]) - p[i + 1] * (p[i + 3] * p[i + 8] - p[i + 5] * p[i + 6]) + p[i + 2] * (p[i + 3] * p[i + 7] - p[i + 4] * p[i + 6]);
+  return v / 6;
+}
+
+// ---------- exportar a CAD (mm) ----------
+// STL binario: todas las piezas en un solo archivo (cada sólido es cerrado)
+function aSTL(partes) {
+  const n = partes.reduce((s, m) => s + m.pos.length / 9, 0), buf = new ArrayBuffer(84 + 50 * n), dv = new DataView(buf);
+  const titulo = "Transformador - parte activa y tanque estimado - mm";
+  for (let i = 0; i < 80; i++) dv.setUint8(i, i < titulo.length ? titulo.charCodeAt(i) & 0x7f : 0x20);
+  dv.setUint32(80, n, true);
+  let o = 84;
+  for (const m of partes) {
+    const p = m.pos;
+    for (let i = 0; i < p.length; i += 9) {
+      const a = [p[i], p[i + 1], p[i + 2]], b = [p[i + 3], p[i + 4], p[i + 5]], c = [p[i + 6], p[i + 7], p[i + 8]];
+      const nn = unitario(cruz(resta(b, a), resta(c, a)));
+      for (const x of nn.concat(a, b, c)) { dv.setFloat32(o, x, true); o += 4; }
+      dv.setUint16(o, 0, true); o += 2;
+    }
+  }
+  return buf;
+}
+// OBJ: un objeto por pieza (núcleo, cada devanado de cada fase, aislamiento, tanque) con vértices compartidos
+function aOBJ(partes) {
+  const lineas = ["# Transformador: parte activa y tanque estimado", "# Unidades: mm · x a lo largo del núcleo, y profundidad, z vertical"];
+  let base = 0;
+  for (const m of partes) {
+    const indice = new Map(), vs = [], fs = [];
+    for (let i = 0; i < m.pos.length; i += 3) {
+      const clave = `${m.pos[i].toFixed(4)} ${m.pos[i + 1].toFixed(4)} ${m.pos[i + 2].toFixed(4)}`;
+      let k = indice.get(clave);
+      if (k === undefined) { k = vs.length + 1; indice.set(clave, k); vs.push(`v ${clave}`); }
+      fs.push(k + base);
+    }
+    lineas.push(`o ${m.id}`, `g ${m.grupo}`, ...vs);
+    for (let i = 0; i < fs.length; i += 3) lineas.push(`f ${fs[i]} ${fs[i + 1]} ${fs[i + 2]}`);
+    base += vs.length;
+  }
+  return lineas.join("\n") + "\n";
+}
+
+// (Node) if (typeof module !== "undefined") module.exports = { modelo3d, volumenMalla, aSTL, aOBJ, TANQUE_ESTIMADO, SEGMENTOS_3D };
+
 </script>
 <script>
 // ===== Interfaz: una sola pantalla, se recalcula con cada dato =====
@@ -2772,7 +3126,7 @@ function pestanasDisponibles(r) {
   if (r.errores.length) return [["errores", "Revisar datos"], ...(r.nuc ? [["nucleo", "Núcleo"]] : []), ...(BUSQ ? [["busqueda", "Búsqueda"]] : [])];
   const devs = CLAVES.filter((k) => r.lista.some((i) => i.clave === k)).map((k) => [`dev-${k}`, NOMBRES[k]]);
   return [["resumen", "Resumen"], ["electrico", "1 · Cálculo eléctrico"], ["nucleo", "2 · Núcleo"], ...devs.map(([id, t]) => [id, `3 · ${t}`]),
-    ["distancias", "4 · Distancias"], ["vcc", "Vcc"], ...(BUSQ ? [["busqueda", "Búsqueda"]] : [])];
+    ["distancias", "4 · Distancias"], ["vcc", "Vcc"], ["3d", "Modelo 3D"], ...(BUSQ ? [["busqueda", "Búsqueda"]] : [])];
 }
 function pintarResultado() {
   const r = R, disp = pestanasDisponibles(r);
@@ -2787,10 +3141,12 @@ function pintarResultado() {
   else if (activa === "vcc") html = vistaVcc(r);
   else if (activa === "distancias") html = vistaDistancias(r);
   else if (activa === "busqueda") html = vistaBusqueda();
+  else if (activa === "3d") html = vista3d();
   else html = vistaDevanado(r, activa.slice(4));
   $("resultado").innerHTML = html;
   if (activa === "nucleo") conectarGrafico();
   if (activa === "busqueda") conectarGraficoBusqueda();
+  if (activa === "3d") conectar3d();
 }
 $("pestanas").addEventListener("click", (ev) => {
   const b = ev.target.closest("button[data-p]");
@@ -3026,7 +3382,7 @@ function vistaBusqueda() {
     return [`<b>${i + 1}</b>`, F.g(a.dn), a.n, a.b.toFixed(3), F.g(a.de), `<b>${a.uz.toFixed(2)}</b>`, err, textoDev(dI), textoDev(sec),
       F.miles(a.cobre), F.miles(a.nucleo), F.miles(a.p0), F.miles(a.pcu), `<b>${F.miles(a.peso)}</b>`, `<b>${F.miles(a.perdidas)}</b>`,
       a.pareto ? "✓" : "", a.verificado ? "✓" : '<span class="no">✗</span>',
-      `<button class="boton chico usar" type="button" data-alt="${i}"${vieja || !a.verificado ? " disabled" : ""}>Usar</button>`];
+      `<span class="acciones-alt"><button class="boton chico usar" type="button" data-alt="${i}"${vieja || !a.verificado ? " disabled" : ""}>Usar</button><button class="boton chico ver3d" type="button" data-alt="${i}" title="Ver la alternativa ${i + 1} en el modelo 3D"${vieja ? " disabled" : ""}>3D</button></span>`];
   });
   const tablaR = `<div class="tabla"><table class="busq"><thead><tr>${["#", "Dn (mm)", "N ref.", "B (T)", "De (mm)", "Vcc (%)", "Error rel. máx. (%)", "Devanado I", "Secundario", "Cobre (kg)", "Núcleo (kg)", "P0 (W)", "I²R (W)", "Peso total (kg)", "Pérdidas totales (W)", "Pareto", "Verif.", ""].map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${
     filas.map((f) => `<tr>${f.map((x, j) => `<td${j === 7 || j === 8 ? ' class="dev"' : ""}>${x}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
@@ -3034,7 +3390,7 @@ function vistaBusqueda() {
     aviejo, resumen, avisos,
     bloque(`Peso contra pérdidas · ${F.miles(c.cumplen)} combinaciones`, graficoBusqueda(r.todos, actual)),
     bloque(`Las ${r.resultados.length} primeras por ${ORDENES[o.orden].toLowerCase()}`, tablaR +
-      `<p class="nota-tabla">J = densidad con la corriente mayor (tensiones y tomas). Pareto = ninguna otra es más liviana y con menos pérdidas a la vez. Verif. = cargada en el diseño completo da los mismos números. Todas usan «Ajustar a la ventana» con la Hc, papeles, canales y distancias de la pantalla; los anchos de escalón son los óptimos de la tabla para cada Dn (los del diseño si Dn no cambia). El kR es el del cuadro por corriente. Las espiras son las mismas que da el diseño: REDONDEO.MAS con la B máxima. «Usar» carga la alternativa en el diseño: Dn, anchos, De, tipo, conductor y arreglo; las condiciones del diseño (B objetivo, J máxima, Vcc objetivo) no cambian.</p>`),
+      `<p class="nota-tabla">J = densidad con la corriente mayor (tensiones y tomas). Pareto = ninguna otra es más liviana y con menos pérdidas a la vez. Verif. = cargada en el diseño completo da los mismos números. Todas usan «Ajustar a la ventana» con la Hc, papeles, canales y distancias de la pantalla; los anchos de escalón son los óptimos de la tabla para cada Dn (los del diseño si Dn no cambia). El kR es el del cuadro por corriente. Las espiras son las mismas que da el diseño: REDONDEO.MAS con la B máxima. «Usar» carga la alternativa en el diseño: Dn, anchos, De, tipo, conductor y arreglo; las condiciones del diseño (B objetivo, J máxima, Vcc objetivo) no cambian. «3D» la muestra en el modelo 3D sin cargarla.</p>`),
   ].join("");
 }
 
@@ -3072,6 +3428,353 @@ document.addEventListener("click", (ev) => {
     BUSQ.ediciones = ediciones;           // cargar una alternativa no deja vieja la búsqueda
     pestana = "resumen"; pintarResultado();
     avisar(`Alternativa ${i + 1} cargada en el diseño: Dn ${F.g(alt.dn)} mm, Vcc ${alt.uz.toFixed(2)} %.`);
+  }
+});
+
+// ===== 5 · Modelo 3D: vista con three.js (se carga de internet solo al abrir la pestaña), corte, capas y exportar a CAD =====
+// La geometría sale de modelo3d() (modelo3d.js), que no necesita three.js: exportar a STL u OBJ funciona aunque la vista no cargue.
+const CLAVE_3D = "diseno-transformador.3d.v1";     // holguras del tanque, capas y corte: van aparte de los datos del diseño
+const MODULOS_3D = ["three", "three/addons/controls/OrbitControls.js"];   // resueltos por el importmap de la plantilla
+const CAPAS_3D = [["nucleo", "Núcleo", COLORES_3D.nucleo], ["devanados", "Devanados", COLORES_3D.I], ["aislamiento", "Aislamiento", COLORES_3D.aislamiento],
+  ["tanque", "Tanque", COLORES_3D.tanque]];
+const CORTES_3D = [["", "Sin corte"], ["y", "Vertical"], ["z", "Horizontal"]];   // vertical: quita el frente (y < corte) · horizontal: quita lo de arriba (z > corte)
+const VISTAS_3D = [["iso", "Isométrica", [-0.95, -1.55, 0.95]], ["frente", "Frente", [0, -1, 0]], ["planta", "Planta", [0, -1e-4, 1]], ["lado", "Lado", [1, 0, 0]]];
+const HOLGURAS_3D = [["lateral", "Lateral", "de la bobina o el yugo a la pared"], ["frente", "Frente y atrás", "de la bobina a la pared"],
+  ["fondo", "Abajo", "del yugo al fondo"], ["superior", "Arriba", "del yugo a la tapa (aceite y cámara)"], ["pared", "Pared", "espesor de la plancha"],
+  ["tapa", "Tapa", "espesor"]];
+const V3 = { tanque: { ...TANQUE_ESTIMADO }, capas: { nucleo: true, devanados: true, aislamiento: true, tanque: true }, corte: "", cortePos: { y: 0, z: 0 },
+  fuente: -1, vista: "iso", cache: null, M: null, f: null };
+try {
+  const g = JSON.parse(leerLocal(CLAVE_3D) || "null");
+  if (g) {
+    for (const k of Object.keys(V3.tanque)) if (g.tanque && typeof g.tanque[k] === "number" && g.tanque[k] >= 0) V3.tanque[k] = g.tanque[k];
+    for (const k of Object.keys(V3.capas)) if (g.capas && typeof g.capas[k] === "boolean") V3.capas[k] = g.capas[k];
+    V3.corte = g.corte === "y" || g.corte === "z" ? g.corte : "";
+  }
+} catch (e) { /* sin almacenamiento o dato viejo */ }
+const guardar3d = () => ponerLocal(CLAVE_3D, JSON.stringify({ tanque: V3.tanque, capas: V3.capas, corte: V3.corte }));
+
+// Diseño que se dibuja: el actual o una alternativa de la búsqueda por Vcc
+function fuente3d() {
+  const res = (BUSQ && BUSQ.r && BUSQ.r.resultados) || [];
+  if (V3.fuente >= res.length) V3.fuente = -1;
+  if (V3.fuente < 0) return { r: R, d: D, titulo: "Diseño actual", sufijo: "" };
+  const alt = res[V3.fuente];
+  if (!V3.cache || V3.cache.alt !== alt) {
+    let r;
+    try { r = calcularTodo(copia(alt.datos)); } catch (ex) { r = { errores: [ex.message] }; }
+    V3.cache = { alt, r };
+  }
+  return { r: V3.cache.r, d: alt.datos, titulo: `Alternativa ${V3.fuente + 1}`, sufijo: `-alt${V3.fuente + 1}` };
+}
+function calcular3d() {
+  const f = fuente3d();
+  let M = null;
+  try { M = modelo3d(f.r, f.d, V3.tanque); } catch (ex) { M = null; }
+  V3.M = M; V3.f = f;
+  return M;
+}
+
+// ---------- la pestaña ----------
+function vista3d() {
+  const M = calcular3d(), f = V3.f, res = (BUSQ && BUSQ.r && BUSQ.r.resultados) || [], mm = (x) => F.miles(x, 0);
+  const opciones = [`<option value="-1">Diseño actual</option>`, ...res.map((a, i) =>
+    `<option value="${i}"${i === V3.fuente ? " selected" : ""}>Alternativa ${i + 1} · Dn ${F.g(a.dn)} · De ${F.g(a.de)} · Vcc ${a.uz.toFixed(2)} %</option>`)].join("");
+  const fuente = `<label class="v3d-fuente">Modelo de <select class="campo" id="v3d-fuente">${opciones}</select></label>`;
+  if (!M) return [`<div class="v3d-barra">${fuente}</div>`,
+    bloque("Modelo 3D", `<p class="vacio">${f.r && f.r.errores && f.r.errores.length ? `Este diseño no se puede dibujar: ${esc(f.r.errores[0])}` : "Faltan datos para dibujar el transformador."}</p>`)].join("");
+  const barra = `<div class="v3d-barra">${fuente}
+    <div class="segmentos" role="group" aria-label="Vista">${VISTAS_3D.map(([k, t]) => `<button type="button" data-v3d-vista="${k}" aria-pressed="${k === V3.vista}">${t}</button>`).join("")}</div>
+    <span class="v3d-corte"><span class="segmentos" role="group" aria-label="Corte">${CORTES_3D.map(([k, t]) =>
+      `<button type="button" data-v3d-corte="${k}" aria-pressed="${k === V3.corte}">${t}</button>`).join("")}</span>
+      <input type="range" id="v3d-corte-pos" step="1" aria-label="Posición del corte, en mm" hidden>
+      <output id="v3d-corte-txt" for="v3d-corte-pos" hidden></output></span></div>`;
+  const lienzo = `<div class="v3d-lienzo" id="v3d-lienzo"><p class="v3d-msg" id="v3d-msg">Cargando la vista 3D…</p>
+    <div class="v3d-etiqueta" id="v3d-etiqueta" hidden></div><span class="v3d-ejes">mm · x largo · y fondo · z alto</span></div>`;
+  const capas = `<div class="v3d-capas">${CAPAS_3D.map(([k, t, c]) =>
+    `<label><input type="checkbox" data-v3d-capa="${k}"${V3.capas[k] ? " checked" : ""}><span class="muestra" style="background:${c}"></span>${t}</label>`).join("")}
+    <span class="v3d-ayuda">Arrastra para girar · rueda o pellizco para acercar · clic derecho o dos dedos para mover</span></div>`;
+  const exporta = `<div class="v3d-exporta"><button class="boton chico principal" type="button" data-v3d-exporta="stl">Descargar STL</button>
+    <button class="boton chico" type="button" data-v3d-exporta="obj">Descargar OBJ</button>
+    <span class="nota">En mm, con las capas visibles. Cada pieza es un sólido cerrado: se abre en SolidWorks, Inventor, Fusion, FreeCAD o AutoCAD. El OBJ trae un objeto por pieza.</span></div>`;
+  const avisos = M.avisos.length ? `<section class="alerta"><h3>Choques en el modelo</h3><ul class="errores">${M.avisos.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></section>` : "";
+  const m = M.medidas, n = m.nucleo, t = m.tanque, igual = Math.abs(n.peso_modelo - n.peso_calculado) <= 1e-6 * n.peso_calculado;
+  const nucleo = lista([["Largo x alto", `${mm(n.largo)} x ${mm(n.alto)} mm`], ["Profundidad (Σ espesores)", `${F.n(n.profundidad)} mm`],
+    ["Volumen de chapas", `${F.miles(n.volumen_l, 1)} L`], ["Peso del modelo (x 7650 kg/m³)", `${F.miles(n.peso_modelo, 1)} kg`, true],
+    ["Peso del cálculo", `${F.miles(n.peso_calculado, 1)} kg ${igual ? "✓" : "✗"}`], ["Radio de la esquina más alejada", `${F.miles(n.r_esquina, 1)} mm`]]);
+  const tanque = lista([["Largo x ancho x alto (interior)", `${mm(t.largo)} x ${mm(t.ancho)} x ${mm(t.alto)} mm`],
+    ["Volumen interior", `${F.miles(t.volumen_interior_l)} L`], ["Aceite (interior − parte activa)", `${F.miles(t.aceite_l)} L`, true]]);
+  const holguras = `<div class="pares v3d-holguras">${HOLGURAS_3D.map(([k, rot, sub]) =>
+    `<label for="v3t-${k}">${rot}<small>${sub}</small></label><input class="campo" id="v3t-${k}" data-v3t="${k}" inputmode="decimal" autocomplete="off" value="${F.g(V3.tanque[k])}">`).join("")}</div>`;
+  const filasDev = m.devanados.map((w) => `<tr><td>${esc(w.nombre)}</td><td>${F.miles(w.d_int, 1)}</td><td>${F.miles(w.d_ext, 1)}</td><td>${F.miles(w.alto, 1)}</td>
+    <td>${w.secciones}</td><td>${w.canales}</td><td${w.al_yugo < 0 ? ' class="no"' : ""}>${F.miles(w.al_yugo, 1)}</td></tr>`).join("");
+  const tablaDev = `<div class="tabla"><table class="corte"><thead><tr><th>Devanado</th><th>Ø int.</th><th>Ø ext.</th><th>Alto</th><th>Bobinas</th><th>Canales int.</th><th>Al yugo (c/lado)</th></tr></thead>
+    <tbody>${filasDev}</tbody></table></div>` +
+    (m.barreras.length ? `<p class="nota-tabla">Barreras: ${m.barreras.map((b) => `${esc(b.entre)}: Ø ${F.miles(2 * b.r, 1)} mm, ${F.g(b.espesor)} mm de espesor, ${F.miles(b.alto, 0)} mm de alto`).join(" · ")}.</p>` : "");
+  const como = `<ul class="v3d-como">
+    <li><b>Núcleo:</b> un marco de chapas por escalón, el mismo con que se calcula su peso: C = 2·De + a, A = Hc + a₁ + a, ventanas (De − a) x (Hc + a₁ − a) y las 4 esquinas cortadas g. El escalón 1 va al centro y cada uno de los siguientes, mitad a cada lado. Su volumen x 7650 kg/m³ da el peso del cálculo.</li>
+    <li><b>Devanados:</b> tubos con los Ø interior y exterior y la altura del montaje, centrados en la ventana. Los canales internos se reparten parejos a lo largo del radial (supuesto de dibujo); la galleta son 2 bobinas separadas 20 mm.</li>
+    <li><b>Aislamiento:</b> barrera al centro del canal entre devanados (con el largo extra del tubo rígido), tubo núcleo–bobina, tubo enrollado y 8 calzas por extremo hasta el yugo (de dibujo).</li>
+    <li><b>Tanque:</b> estimado con las holguras de al lado; no sale de un cálculo térmico (sin radiadores ni accesorios).</li>
+    <li><b>Verificado:</b> <code>verificacion/prueba_3d.js</code> comprueba que cada pieza sea un sólido cerrado y que medidas, volúmenes y peso coincidan con el cálculo, también en las alternativas de la búsqueda.</li></ul>`;
+  return [
+    `<p class="encabezado">Modelo 3D de <b>${esc(f.titulo.toLowerCase())}</b>, generado con el cálculo: núcleo por escalones, devanados con sus canales, aislamiento mayor y un tanque estimado · <b>${F.miles(m.triangulos)}</b> triángulos.</p>`,
+    avisos,
+    `<section class="v3d">${barra}${lienzo}${capas}${exporta}</section>`,
+    bloque("Devanados en el modelo (mm)", tablaDev),
+    `<div class="dos">${bloque("Núcleo", nucleo)}${bloque("Tanque (estimado)", tanque + holguras)}</div>`,
+    bloque("Cómo se genera", como),
+  ].join("");
+}
+
+// ---------- la escena (three.js) ----------
+// slider del corte: el rango es el del modelo en ese eje
+function controlCorte3d() {
+  const s = $("v3d-corte-pos"), o = $("v3d-corte-txt"), ax = V3.corte;
+  if (!s || !V3.M) return;
+  for (const b of document.querySelectorAll("[data-v3d-corte]")) b.setAttribute("aria-pressed", String(b.dataset.v3dCorte === ax));
+  s.hidden = o.hidden = !ax;
+  if (!ax) return;
+  const lo = Math.floor(V3.M.caja[ax][0]), hi = Math.ceil(V3.M.caja[ax][1]);
+  V3.cortePos[ax] = Math.min(Math.max(V3.cortePos[ax], lo), hi);
+  s.min = lo; s.max = hi; s.value = V3.cortePos[ax];
+  o.textContent = `${ax} = ${V3.cortePos[ax]} mm`;
+}
+const E3 = { T: null, OC: null, promesa: null, fallo: "", renderer: null, scene: null, camera: null, controls: null, plano: null, ray: null,
+  raiz: null, capas: {}, pick: [], corteObjs: [], tapas: [], mat: new Map(), linea: null, lineaTanque: null, M: null, host: null, ro: null,
+  encuadrado: false, pendiente: false, ultimoPuntero: null };
+function cargarTres() {
+  if (!E3.promesa) E3.promesa = Promise.all(MODULOS_3D.map((m) => import(m))).then(([T, C]) => { E3.T = T; E3.OC = C.OrbitControls; E3.fallo = ""; })
+    .catch((ex) => { E3.promesa = null; E3.fallo = "No se pudo cargar three.js: la vista 3D lo trae de internet."; throw ex; });
+  return E3.promesa;
+}
+function iniciar3d() {
+  const T = E3.T, r = new T.WebGLRenderer({ antialias: true, stencil: true });
+  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  r.localClippingEnabled = true;
+  r.domElement.setAttribute("role", "img");
+  r.domElement.setAttribute("aria-label", "Modelo 3D del transformador: arrastra para girar");
+  E3.renderer = r;
+  E3.scene = new T.Scene();
+  E3.camera = new T.PerspectiveCamera(32, 1.6, 10, 100000);
+  E3.camera.up.set(0, 0, 1);                               // z vertical
+  E3.scene.add(E3.camera);
+  E3.scene.add(new T.AmbientLight(0xffffff, 0.75));
+  const l1 = new T.DirectionalLight(0xffffff, 2.1), l2 = new T.DirectionalLight(0xffffff, 0.55);
+  l1.position.set(-1500, 1800, 0); l2.position.set(1800, -900, 0);   // van con la cámara: la luz siempre viene de arriba a la izquierda
+  E3.camera.add(l1, l2);
+  E3.controls = new E3.OC(E3.camera, r.domElement);
+  E3.controls.zoomToCursor = true;
+  E3.controls.addEventListener("change", pintar3d);
+  E3.plano = new T.Plane(new T.Vector3(0, 1, 0), 1e7);     // deja y ≥ −constante
+  E3.ray = new T.Raycaster();
+  E3.linea = new T.LineBasicMaterial({ transparent: true, opacity: 0.28, clippingPlanes: [E3.plano] });
+  E3.lineaTanque = new T.LineBasicMaterial({ transparent: true, opacity: 0.45, clippingPlanes: [E3.plano] });
+  r.domElement.addEventListener("pointermove", (ev) => { E3.ultimoPuntero = ev; if (!E3.esperaPick) { E3.esperaPick = true; requestAnimationFrame(senalar3d); } });
+  r.domElement.addEventListener("pointerleave", () => { E3.ultimoPuntero = null; const e = $("v3d-etiqueta"); if (e) e.hidden = true; });
+  E3.ro = new ResizeObserver(tamano3d);
+  new MutationObserver(() => { colores3d(); pintar3d(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-tema"] });
+}
+function material3d(p) {
+  const T = E3.T, k = `${p.grupo}|${p.color}|${!!p.transparente}`;
+  if (!E3.mat.has(k)) {
+    const base = { color: new T.Color(p.color), clippingPlanes: [E3.plano] };
+    E3.mat.set(k, p.grupo === "tanque"
+      ? new T.MeshStandardMaterial({ ...base, transparent: true, opacity: 0.09, depthWrite: false, side: T.DoubleSide, roughness: 0.55, metalness: 0.15 })
+      : p.transparente ? new T.MeshStandardMaterial({ ...base, transparent: true, opacity: 0.4, depthWrite: false, roughness: 0.8, metalness: 0 })
+      : new T.MeshStandardMaterial({ ...base, roughness: p.grupo === "aislamiento" ? 0.85 : 0.42, metalness: p.grupo === "devanados" ? 0.35 : p.grupo === "nucleo" ? 0.22 : 0 }));
+  }
+  return E3.mat.get(k);
+}
+// Corte con tapas: el stencil cuenta cuántas veces se entra y se sale de cada sólido detrás del plano; donde queda
+// dentro de uno se pinta la tapa, del color de la pieza (como el ejemplo «clipping stencil» de three.js)
+function stencil3d(geo, orden) {
+  const T = E3.T, g = new T.Group();
+  for (const [lado, op] of [[T.BackSide, T.IncrementWrapStencilOp], [T.FrontSide, T.DecrementWrapStencilOp]]) {
+    const mat = new T.MeshBasicMaterial({ side: lado, depthWrite: false, depthTest: false, colorWrite: false, stencilWrite: true,
+      stencilFunc: T.AlwaysStencilFunc, stencilFail: op, stencilZFail: op, stencilZPass: op, clippingPlanes: [E3.plano] });
+    const malla = new T.Mesh(geo, mat);
+    malla.renderOrder = orden; malla.userData.matPropio = true;
+    g.add(malla);
+  }
+  return g;
+}
+function construir3d(M) {
+  const T = E3.T;
+  if (E3.raiz) {
+    E3.scene.remove(E3.raiz);
+    E3.raiz.traverse((o) => { if (o.geometry && o.geometry !== E3.geoTapa) o.geometry.dispose(); if (o.userData.matPropio) o.material.dispose(); });
+    if (E3.geoTapa) E3.geoTapa.dispose();
+  }
+  const raiz = new T.Group(), porColor = new Map();
+  E3.capas = {}; E3.pick = []; E3.corteObjs = []; E3.tapas = [];
+  for (const [k] of CAPAS_3D) { E3.capas[k] = new T.Group(); raiz.add(E3.capas[k]); }
+  for (const p of M.partes) {
+    const geo = new T.BufferGeometry();
+    geo.setAttribute("position", new T.BufferAttribute(new Float32Array(p.pos), 3));
+    geo.setAttribute("normal", new T.BufferAttribute(new Float32Array(p.nor), 3));
+    geo.computeBoundingSphere();
+    const malla = new T.Mesh(geo, material3d(p)), bordes = new T.LineSegments(new T.EdgesGeometry(geo, 25), p.grupo === "tanque" ? E3.lineaTanque : E3.linea);
+    malla.renderOrder = 20; bordes.renderOrder = 21; malla.userData.nombre = p.nombre;
+    E3.capas[p.grupo].add(malla, bordes);
+    if (p.grupo !== "tanque" && !p.transparente) E3.pick.push(malla);   // bajo el tubo enrollado se nombra el devanado
+    if (!porColor.has(p.color)) porColor.set(p.color, { grupo: p.grupo, geos: [] });
+    porColor.get(p.color).geos.push(geo);
+  }
+  const c = M.caja, lado = 2.4 * Math.max(c.x[1] - c.x[0], c.y[1] - c.y[0], c.z[1] - c.z[0]);
+  E3.geoTapa = new T.PlaneGeometry(lado, lado);                         // plano x-y; se gira para el corte vertical
+  E3.centro = [(c.x[0] + c.x[1]) / 2, (c.y[0] + c.y[1]) / 2, (c.z[0] + c.z[1]) / 2];
+  let orden = 1;
+  for (const [color, { grupo, geos }] of porColor) {
+    for (const geo of geos) { const s = stencil3d(geo, orden); E3.capas[grupo].add(s); E3.corteObjs.push(s); }
+    // polygonOffset: la tapa gana en profundidad a las caras que llegan justo hasta el plano de corte
+    const mat = new T.MeshStandardMaterial({ color: new T.Color(color).multiplyScalar(0.82), roughness: 0.9, metalness: 0, side: T.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+      stencilWrite: true, stencilRef: 0, stencilFunc: T.NotEqualStencilFunc, stencilFail: T.ReplaceStencilOp, stencilZFail: T.ReplaceStencilOp, stencilZPass: T.ReplaceStencilOp });
+    const tapa = new T.Mesh(E3.geoTapa, mat);
+    tapa.renderOrder = orden + 0.5; tapa.userData.matPropio = true;
+    tapa.onAfterRender = (rend) => rend.clearStencil();
+    E3.capas[grupo].add(tapa); E3.corteObjs.push(tapa); E3.tapas.push(tapa);
+    orden++;
+  }
+  E3.raiz = raiz;
+  E3.scene.add(raiz);
+}
+function aplicarCapas3d() { for (const [k] of CAPAS_3D) if (E3.capas[k]) E3.capas[k].visible = !!V3.capas[k]; }
+function aplicarCorte3d() {
+  if (!E3.plano) return;
+  const ax = V3.corte, pos = ax ? V3.cortePos[ax] : 0, [cx, cy, cz] = E3.centro;
+  if (!ax) E3.plano.set(new E3.T.Vector3(0, 1, 0), 1e7);                       // nada cortado
+  else if (ax === "y") E3.plano.set(new E3.T.Vector3(0, 1, 0), -pos);         // deja y ≥ corte
+  else E3.plano.set(new E3.T.Vector3(0, 0, -1), pos);                         // deja z ≤ corte
+  for (const o of E3.corteObjs) o.visible = !!ax;
+  for (const t of E3.tapas) {
+    if (ax === "y") { t.rotation.set(Math.PI / 2, 0, 0); t.position.set(cx, pos, cz); }   // mirando al frente (−y)
+    else { t.rotation.set(0, 0, 0); t.position.set(cx, cy, pos); }                         // mirando arriba (+z)
+  }
+}
+function colores3d() {
+  if (!E3.scene) return;
+  const css = getComputedStyle(document.documentElement), v = (n, x) => css.getPropertyValue(n).trim() || x;
+  E3.scene.background = new E3.T.Color(v("--campo", "#f5f7f9"));
+  E3.linea.color.set(v("--fg", "#1b2127"));
+  E3.lineaTanque.color.set(v("--fg-2", "#3c4651"));
+}
+function tamano3d() {
+  const h = E3.host;
+  if (!h || !E3.renderer || !h.isConnected) return;
+  const w = h.clientWidth, alto = h.clientHeight;
+  if (!w || !alto) return;
+  E3.renderer.setSize(w, alto, false);
+  E3.camera.aspect = w / alto;
+  E3.camera.updateProjectionMatrix();
+  pintar3d();
+}
+function pintar3d() {
+  if (E3.pendiente || !E3.renderer) return;
+  E3.pendiente = true;
+  requestAnimationFrame(() => { E3.pendiente = false; if (E3.host && E3.host.isConnected) E3.renderer.render(E3.scene, E3.camera); });
+}
+function encuadrar3d(vista) {
+  const T = E3.T, c = V3.M.caja, cam = E3.camera;
+  const centro = new T.Vector3((c.x[0] + c.x[1]) / 2, (c.y[0] + c.y[1]) / 2, (c.z[0] + c.z[1]) / 2);
+  const radio = 0.5 * Math.hypot(c.x[1] - c.x[0], c.y[1] - c.y[0], c.z[1] - c.z[0]);
+  const fv = (cam.fov * Math.PI) / 180, fh = 2 * Math.atan(Math.tan(fv / 2) * cam.aspect);
+  const dist = (radio / Math.sin(Math.min(fv, fh) / 2)) * 0.9, dir = new T.Vector3(...VISTAS_3D.find(([k]) => k === vista)[2]).normalize();
+  cam.position.copy(centro).addScaledVector(dir, dist);
+  cam.near = dist / 60; cam.far = dist * 20; cam.updateProjectionMatrix();
+  E3.controls.target.copy(centro);
+  E3.controls.update();
+  pintar3d();
+}
+// nombre de la pieza bajo el puntero (las cortadas no cuentan)
+function senalar3d() {
+  E3.esperaPick = false;
+  const ev = E3.ultimoPuntero, et = $("v3d-etiqueta");
+  if (!ev || !et || !E3.renderer) return;
+  const b = E3.renderer.domElement.getBoundingClientRect();
+  E3.ray.setFromCamera(new E3.T.Vector2(((ev.clientX - b.left) / b.width) * 2 - 1, -((ev.clientY - b.top) / b.height) * 2 + 1), E3.camera);
+  const ax = V3.corte, pos = ax ? V3.cortePos[ax] : 0;
+  const hit = E3.ray.intersectObjects(E3.pick.filter((m) => m.parent.visible), false)
+    .find((h) => !ax || (ax === "y" ? h.point.y >= pos - 0.5 : h.point.z <= pos + 0.5));
+  et.hidden = !hit;
+  if (hit) et.textContent = hit.object.userData.nombre;
+}
+function conectar3d() {
+  const host = $("v3d-lienzo"), msg = $("v3d-msg");
+  if (!host || !V3.M) return;
+  controlCorte3d();
+  if (E3.fallo && !E3.promesa) { msg.textContent = `${E3.fallo} Las descargas STL y OBJ funcionan igual.`; return; }
+  if (!E3.T) {
+    cargarTres().then(() => conectar3d(), () => { const m = $("v3d-msg"); if (m) m.textContent = `${E3.fallo} Las descargas STL y OBJ funcionan igual.`; });
+    return;
+  }
+  try {
+    if (!E3.renderer) iniciar3d();
+    E3.host = host;
+    host.prepend(E3.renderer.domElement);
+    msg.hidden = true;
+    E3.ro.disconnect(); E3.ro.observe(host);
+    colores3d();
+    if (E3.M !== V3.M) { construir3d(V3.M); E3.M = V3.M; }
+    aplicarCapas3d(); aplicarCorte3d();
+    tamano3d();
+    if (!E3.encuadrado) { encuadrar3d(V3.vista); E3.encuadrado = true; }
+  } catch (ex) {
+    msg.hidden = false;
+    msg.textContent = `No se pudo mostrar la vista 3D en este navegador (${ex.message}). Las descargas STL y OBJ funcionan igual.`;
+  }
+}
+function descargar3d(tipo) {
+  const M = V3.M;
+  if (!M) return;
+  const partes = M.partes.filter((p) => V3.capas[p.grupo]);
+  if (!partes.length) { avisar("No hay capas visibles para exportar."); return; }
+  const blob = new Blob([tipo === "stl" ? aSTL(partes) : aOBJ(partes)], { type: tipo === "stl" ? "model/stl" : "model/obj" });
+  const a = document.createElement("a"), nombre = String(V3.f.d.codigo || "transformador").replace(/[^\w.-]+/g, "_");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${nombre}-3d${V3.f.sufijo}.${tipo}`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  avisar(`${tipo.toUpperCase()} listo: ${partes.length} piezas, ${F.miles(partes.reduce((s, p) => s + p.pos.length / 9, 0))} triángulos, en mm.`);
+}
+
+// --- eventos de la pestaña (no cambian el diseño) ---
+document.addEventListener("click", (ev) => {
+  const t = ev.target.closest && ev.target.closest("[data-v3d-vista], [data-v3d-corte], [data-v3d-exporta], button.ver3d");
+  if (!t) return;
+  if (t.dataset.v3dCorte !== undefined) {
+    V3.corte = t.dataset.v3dCorte; guardar3d();
+    controlCorte3d(); aplicarCorte3d(); pintar3d();
+  } else if (t.dataset.v3dVista) {
+    V3.vista = t.dataset.v3dVista;
+    for (const b of document.querySelectorAll("[data-v3d-vista]")) b.setAttribute("aria-pressed", String(b === t));
+    if (E3.renderer && V3.M) encuadrar3d(V3.vista);
+  } else if (t.dataset.v3dExporta) descargar3d(t.dataset.v3dExporta);
+  else {                                              // «3D» en la tabla de la búsqueda
+    V3.fuente = Number(t.dataset.alt);
+    pestana = "3d"; ponerLocal(CLAVE_PESTANA, pestana); pintarResultado();
+    $(`panel-${ULTIMO_PASO}`).scrollTop = 0;
+  }
+});
+document.addEventListener("input", (ev) => {
+  const el = ev.target;
+  if (el.id === "v3d-corte-pos") {
+    V3.cortePos[V3.corte] = Number(el.value);
+    $("v3d-corte-txt").textContent = `${V3.corte} = ${el.value} mm`;
+    aplicarCorte3d(); pintar3d();
+  }
+});
+document.addEventListener("change", (ev) => {
+  const el = ev.target;
+  if (el.id === "v3d-fuente") { V3.fuente = Number(el.value); pintarResultado(); }
+  else if (el.dataset && el.dataset.v3dCapa) {
+    V3.capas[el.dataset.v3dCapa] = el.checked; guardar3d();
+    aplicarCapas3d(); pintar3d();
+  } else if (el.dataset && el.dataset.v3t) {
+    const v = parseFloat(String(el.value).trim().replace(",", "."));
+    if (isFinite(v) && v >= 0) { V3.tanque[el.dataset.v3t] = v; guardar3d(); }
+    pintarResultado();
   }
 });
 
